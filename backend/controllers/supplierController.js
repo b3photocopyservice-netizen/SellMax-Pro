@@ -136,6 +136,30 @@ router.post('/purchases', authenticateToken, checkPermission('MANAGE_PURCHASES')
   }
 });
 
+// POST /api/suppliers/direct-purchase
+router.post('/direct-purchase', authenticateToken, checkPermission('MANAGE_PURCHASES'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const userId = req.user.userId;
+    const bill = await supplierService.createDirectCashPurchase(companyId, userId, req.body);
+    res.status(201).json(bill);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/suppliers/direct-credit-purchase
+router.post('/direct-credit-purchase', authenticateToken, checkPermission('MANAGE_PURCHASES'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const userId = req.user.userId;
+    const bill = await supplierService.createDirectCreditPurchase(companyId, userId, req.body);
+    res.status(201).json(bill);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // PUT /api/suppliers/purchases/:id  (edit Draft / Ordered PO)
 router.put('/purchases/:id', authenticateToken, checkPermission('MANAGE_PURCHASES'), async (req, res, next) => {
   try {

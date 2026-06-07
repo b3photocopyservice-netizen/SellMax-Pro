@@ -99,6 +99,67 @@ class SupplierService {
     return po;
   }
 
+  async createDirectCashPurchase(companyId, userId, data) {
+    if (!data.supplierId) throw new Error('Supplier selection is required.');
+    if (!data.items || data.items.length === 0) throw new Error('Direct cash purchase must contain at least 1 item.');
+
+    const supplier = await supplierRepository.getSupplierById(data.supplierId, companyId);
+    if (!supplier) throw new Error('Selected supplier does not exist.');
+
+    const result = await supplierRepository.createDirectCashPurchase(companyId, userId, data);
+
+    // Raise Alert
+    await db.query(`
+      INSERT INTO dbo.SystemNotifications (CompanyID, Type, Message)
+      VALUES (@CompanyID, 'SupplierPO', @Message)
+    `, {
+      CompanyID: companyId,
+      Message: `Direct Cash Purchase (${result.PONumber}) generated for supplier ${supplier.SupplierName}.`
+    });
+
+    // Log Audit
+    await supplierRepository.createAuditLog(
+      companyId, 
+      userId, 
+      'PO Generated', 
+      `Direct Cash Purchase ${result.PONumber} finalized for ${supplier.SupplierName}. Total amount: Rs. ${parseFloat(result.TotalAmount).toFixed(2)}`
+    );
+
+    return result;
+  }
+
+  async createDirectCreditPurchase(companyId, userId, data) {
+    if (!data.supplierId) throw new Error('Supplier selection is required.');
+    if (!data.items || data.items.length === 0) throw new Error('Direct credit purchase must contain at least 1 item.');
+
+    const supplier = await supplierRepository.getSupplierById(data.supplierId, companyId);
+    if (!supplier) throw new Error('Selected supplier does not exist.');
+
+    const result = await supplierRepository.createDirectCreditPurchase(companyId, userId, data);
+
+    // Raise Alert
+    await db.query(`
+      INSERT INTO dbo.SystemNotifications (CompanyID, Type, Message)
+      VALUES (@CompanyID, 'SupplierPO', @Message)
+    `, {
+      CompanyID: companyId,
+      Message: `Direct Credit Purchase Invoice (${result.PONumber}) generated for supplier ${supplier.SupplierName}.`
+    });
+
+    // Log Audit
+    await supplierRepository.createAuditLog(
+      companyId, 
+      userId, 
+      'PO Generated', 
+      `Direct Credit Purchase Invoice ${result.PONumber} finalized for ${supplier.SupplierName}. Total amount: Rs. ${parseFloat(result.TotalAmount).toFixed(2)}, Paid: Rs. ${parseFloat(data.paidAmount || 0).toFixed(2)}`
+    );
+
+    // Check Credit Limit Threshold
+    await this.checkCreditLimitThreshold(companyId, supplier);
+
+    return result;
+  }
+
   async updatePO(purchaseOrderId, companyId, userId, data) {
     if (!data.supplierId) throw new Error('Supplier selection is required.');
     if (!data.items || data.items.length === 0) throw new Error('Purchase order must contain at least 1 item.');
@@ -202,7 +263,7 @@ class SupplierService {
       companyId, 
       userId, 
       'Supplier Return', 
-      `Supplier return ${returnDoc.ReturnNumber} processed for ${supplier.SupplierName}. Total debited: Rs. ${parseFloat(returnDoc.TotalAmount).toFixed(2)}.`
+      `Supplier return ${returnDoc.ReturnNumber} (${returnDoc.ReturnType} return) processed for ${supplier.SupplierName}. Total value: Rs. ${parseFloat(returnDoc.TotalAmount).toFixed(2)}.`
     );
 
     return returnDoc;
@@ -231,7 +292,7 @@ class SupplierService {
       companyId,
       userId,
       'Return Updated',
-      `Supplier return ${updated.ReturnNumber} has been updated for supplier ${supplier.SupplierName}. New Total: Rs. ${parseFloat(updated.TotalAmount).toFixed(2)}.`
+      `Supplier return ${updated.ReturnNumber} (${updated.ReturnType} return) has been updated for supplier ${supplier.SupplierName}. New Total: Rs. ${parseFloat(updated.TotalAmount).toFixed(2)}.`
     );
 
     return updated;

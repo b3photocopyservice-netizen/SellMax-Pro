@@ -46,6 +46,8 @@ export default function Suppliers({ setToast }) {
   const [editingReturnId, setEditingReturnId] = useState(null);
   const [showCreateInvoiceGrnModal, setShowCreateInvoiceGrnModal] = useState(false);
   const [selectedCreateInvoiceGrnPoId, setSelectedCreateInvoiceGrnPoId] = useState('');
+  const [showDirectCashPurchaseModal, setShowDirectCashPurchaseModal] = useState(false);
+  const [showDirectCreditPurchaseModal, setShowDirectCreditPurchaseModal] = useState(false);
   
   const [selectedPo, setSelectedPo] = useState(null);
   const [activeSearchIndex, setActiveSearchIndex] = useState(null);
@@ -103,7 +105,34 @@ export default function Suppliers({ setToast }) {
     supplierId: '',
     reason: '',
     branchName: '',
+    returnType: 'Credit',
     items: [] // { productId: '', quantity: 0, unitCost: 0, batchNo: '' }
+  });
+
+  // Direct Cash Purchase Form State
+  const [directPurchaseForm, setDirectPurchaseForm] = useState({
+    supplierId: '',
+    branchName: '',
+    invoiceNumber: '',
+    invoiceDate: new Date().toISOString().split('T')[0],
+    paymentMethod: 'Cash',
+    paymentReference: '',
+    notes: '',
+    items: []
+  });
+
+  // Direct Credit Purchase Form State
+  const [directCreditPurchaseForm, setDirectCreditPurchaseForm] = useState({
+    supplierId: '',
+    branchName: '',
+    invoiceNumber: '',
+    invoiceDate: new Date().toISOString().split('T')[0],
+    dueDate: '',
+    paidAmount: '0.00',
+    paymentMethod: 'Cash',
+    paymentReference: '',
+    notes: '',
+    items: []
   });
 
   // 7. Ledger View
@@ -145,6 +174,8 @@ export default function Suppliers({ setToast }) {
   useEffect(() => {
     const handleEscKey = (e) => {
       if (e.key !== 'Escape') return;
+      if (showDirectCashPurchaseModal) { setShowDirectCashPurchaseModal(false); return; }
+      if (showDirectCreditPurchaseModal) { setShowDirectCreditPurchaseModal(false); return; }
       if (showPaymentModal)           { setShowPaymentModal(false);           return; }
       if (showCreateInvoiceGrnModal)  { setShowCreateInvoiceGrnModal(false);  return; }
       if (showInvoiceModal)           { setShowInvoiceModal(false);            return; }
@@ -158,6 +189,8 @@ export default function Suppliers({ setToast }) {
     document.addEventListener('keydown', handleEscKey);
     return () => document.removeEventListener('keydown', handleEscKey);
   }, [
+    showDirectCashPurchaseModal,
+    showDirectCreditPurchaseModal,
     showPaymentModal,
     showCreateInvoiceGrnModal,
     showInvoiceModal,
@@ -1094,6 +1127,434 @@ export default function Suppliers({ setToast }) {
     }
   };
 
+  // --- ACTIONS: DIRECT CASH PURCHASE ---
+
+  const handleOpenDirectCashPurchaseModal = () => {
+    setDirectPurchaseForm({
+      supplierId: suppliers[0]?.SupplierID || '',
+      branchName: user?.branchName || 'Main Store',
+      invoiceNumber: '',
+      invoiceDate: new Date().toISOString().split('T')[0],
+      paymentMethod: 'Cash',
+      paymentReference: '',
+      notes: '',
+      items: [{
+        productId: '',
+        searchQuery: '',
+        quantity: '1',
+        unitCost: '0.00',
+        batchNo: '',
+        mfgDate: '',
+        expiryDate: '',
+        warehouseName: 'Main Warehouse'
+      }]
+    });
+    setShowDirectCashPurchaseModal(true);
+  };
+
+  const handleDirectPurchaseItemChange = (index, field, value) => {
+    const newItems = [...directPurchaseForm.items];
+    newItems[index][field] = value;
+    
+    if (field === 'productId') {
+      const prod = products.find(p => p.ProductID === parseInt(value, 10));
+      if (prod) {
+        newItems[index].unitCost = Number(prod.Cost).toFixed(2);
+      }
+    }
+    setDirectPurchaseForm(prev => ({ ...prev, items: newItems }));
+  };
+
+  const handleDirectPurchaseSearchInputChange = (index, value) => {
+    const newItems = [...directPurchaseForm.items];
+    newItems[index].searchQuery = value;
+    
+    const currentProductId = newItems[index].productId;
+    const currentProd = currentProductId ? products.find(p => p.ProductID === parseInt(currentProductId, 10)) : null;
+    const currentLabel = currentProd ? `${currentProd.Name} (${currentProd.Barcode || currentProd.SKU})` : '';
+    
+    if (value !== currentLabel) {
+      newItems[index].productId = '';
+      newItems[index].unitCost = '0.00';
+    }
+    
+    const cleanVal = value.trim();
+    if (cleanVal) {
+      const exactMatch = products.find(p => 
+        (p.Barcode && p.Barcode === cleanVal) || 
+        (p.SKU && p.SKU === cleanVal) ||
+        (p.Name.toLowerCase() === cleanVal.toLowerCase())
+      );
+      
+      if (exactMatch) {
+        const existingIndex = newItems.findIndex((item, i) => 
+          i !== index && item.productId && String(item.productId) === String(exactMatch.ProductID)
+        );
+        
+        if (existingIndex !== -1) {
+          const addQty = parseFloat(newItems[index].quantity) || 1;
+          newItems[existingIndex].quantity = String(
+            parseFloat(newItems[existingIndex].quantity || 1) + addQty
+          );
+          newItems.splice(index, 1);
+          setToast({ type: 'success', message: `Merged: ${exactMatch.Name} quantity updated.` });
+        } else {
+          newItems[index].productId = exactMatch.ProductID;
+          newItems[index].unitCost = Number(exactMatch.Cost).toFixed(2);
+          newItems[index].searchQuery = `${exactMatch.Name} (${exactMatch.Barcode || exactMatch.SKU})`;
+          setToast({ type: 'success', message: `Selected: ${exactMatch.Name}` });
+        }
+      }
+    }
+    
+    setDirectPurchaseForm(prev => ({ ...prev, items: newItems }));
+  };
+
+  const handleDirectPurchaseSearchInputKeyDown = (e, index) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const query = (directPurchaseForm.items[index].searchQuery || '').trim();
+      if (!query) return;
+      
+      const match = products.find(p => 
+        (p.Barcode && p.Barcode.toLowerCase() === query.toLowerCase()) || 
+        (p.SKU && p.SKU.toLowerCase() === query.toLowerCase()) ||
+        p.Name.toLowerCase().includes(query.toLowerCase())
+      );
+      
+      if (match) {
+        const newItems = [...directPurchaseForm.items];
+        const existingIndex = newItems.findIndex((item, i) => 
+          i !== index && item.productId && String(item.productId) === String(match.ProductID)
+        );
+        
+        if (existingIndex !== -1) {
+          const addQty = parseFloat(newItems[index].quantity) || 1;
+          newItems[existingIndex].quantity = String(
+            parseFloat(newItems[existingIndex].quantity || 1) + addQty
+          );
+          newItems.splice(index, 1);
+          setDirectPurchaseForm(prev => ({ ...prev, items: newItems }));
+          setToast({ type: 'success', message: `Merged: ${match.Name} quantity updated.` });
+        } else {
+          newItems[index].productId = match.ProductID;
+          newItems[index].unitCost = Number(match.Cost).toFixed(2);
+          newItems[index].searchQuery = `${match.Name} (${match.Barcode || match.SKU})`;
+          setDirectPurchaseForm(prev => ({ ...prev, items: newItems }));
+          setToast({ type: 'success', message: `Selected: ${match.Name}` });
+        }
+        setActiveSearchIndex(null);
+      }
+    }
+  };
+
+  const handleAddDirectPurchaseItem = () => {
+    setDirectPurchaseForm(prev => ({
+      ...prev,
+      items: [...prev.items, {
+        productId: '',
+        searchQuery: '',
+        quantity: '1',
+        unitCost: '0.00',
+        batchNo: '',
+        mfgDate: '',
+        expiryDate: '',
+        warehouseName: 'Main Warehouse'
+      }]
+    }));
+  };
+
+  const handleRemoveDirectPurchaseItem = (index) => {
+    if (directPurchaseForm.items.length <= 1) return;
+    const newItems = directPurchaseForm.items.filter((_, i) => i !== index);
+    setDirectPurchaseForm(prev => ({ ...prev, items: newItems }));
+  };
+
+  const handleDirectPurchaseSubmit = async (e) => {
+    e.preventDefault();
+    if (!canManagePurchases) return;
+
+    if (!directPurchaseForm.supplierId) {
+      setToast({ type: 'error', message: 'Supplier is required.' });
+      return;
+    }
+
+    if (directPurchaseForm.items.length === 0) {
+      setToast({ type: 'error', message: 'Direct purchase must contain at least 1 item.' });
+      return;
+    }
+
+    for (let i = 0; i < directPurchaseForm.items.length; i++) {
+      const item = directPurchaseForm.items[i];
+      if (!item.productId) {
+        setToast({ type: 'error', message: `Row ${i + 1}: Please select a valid product using the Smart Search field.` });
+        return;
+      }
+      const qty = parseFloat(item.quantity);
+      if (isNaN(qty) || qty <= 0) {
+        setToast({ type: 'error', message: `Row ${i + 1}: Quantity must be greater than zero.` });
+        return;
+      }
+      const isBatchTracked = products.find(p => p.ProductID === parseInt(item.productId, 10))?.IsBatchTracked;
+      if (isBatchTracked) {
+        if (!item.batchNo || !item.expiryDate) {
+          setToast({ type: 'error', message: `Row ${i + 1}: Product is batch tracked. Batch No and Expiry Date are required.` });
+          return;
+        }
+      }
+    }
+
+    try {
+      setActionLoading(true);
+      const res = await fetch(`${API_URL}/api/suppliers/direct-purchase`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(directPurchaseForm)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToast({ 
+          type: 'success', 
+          message: `Direct Cash Purchase ${data.PONumber} processed successfully. Stock updated and immediate payment settled.` 
+        });
+        setShowDirectCashPurchaseModal(false);
+        fetchPurchaseOrders();
+        fetchSuppliers();
+        fetchProducts();
+        fetchWidgets();
+      } else {
+        setToast({ type: 'error', message: data.error || 'Failed to submit cash purchase.' });
+      }
+    } catch (err) {
+      setToast({ type: 'error', message: 'Connection failure.' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // --- ACTIONS: DIRECT CREDIT PURCHASE ---
+
+  const handleOpenDirectCreditPurchaseModal = () => {
+    const defaultSupplier = suppliers[0]?.SupplierID || '';
+    const sup = suppliers.find(s => s.SupplierID === parseInt(defaultSupplier, 10));
+    const creditPeriod = sup?.CreditPeriodDays || 30;
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + creditPeriod);
+
+    setDirectCreditPurchaseForm({
+      supplierId: defaultSupplier,
+      branchName: user?.branchName || 'Main Store',
+      invoiceNumber: '',
+      invoiceDate: new Date().toISOString().split('T')[0],
+      dueDate: dueDate.toISOString().split('T')[0],
+      paidAmount: '0.00',
+      paymentMethod: 'Cash',
+      paymentReference: '',
+      notes: '',
+      items: [{
+        productId: '',
+        searchQuery: '',
+        quantity: '1',
+        unitCost: '0.00',
+        discount: '0.00',
+        tax: '0.00',
+        batchNo: '',
+        mfgDate: '',
+        expiryDate: '',
+        warehouseName: 'Main Warehouse'
+      }]
+    });
+    setShowDirectCreditPurchaseModal(true);
+  };
+
+  const handleDirectCreditPurchaseItemChange = (index, field, value) => {
+    const newItems = [...directCreditPurchaseForm.items];
+    newItems[index][field] = value;
+    
+    if (field === 'productId') {
+      const prod = products.find(p => p.ProductID === parseInt(value, 10));
+      if (prod) {
+        newItems[index].unitCost = Number(prod.Cost).toFixed(2);
+      }
+    }
+    setDirectCreditPurchaseForm(prev => ({ ...prev, items: newItems }));
+  };
+
+  const handleDirectCreditPurchaseSearchInputChange = (index, value) => {
+    const newItems = [...directCreditPurchaseForm.items];
+    newItems[index].searchQuery = value;
+    
+    const currentProductId = newItems[index].productId;
+    const currentProd = currentProductId ? products.find(p => p.ProductID === parseInt(currentProductId, 10)) : null;
+    const currentLabel = currentProd ? `${currentProd.Name} (${currentProd.Barcode || currentProd.SKU})` : '';
+    
+    if (value !== currentLabel) {
+      newItems[index].productId = '';
+      newItems[index].unitCost = '0.00';
+    }
+    
+    const cleanVal = value.trim();
+    if (cleanVal) {
+      const exactMatch = products.find(p => 
+        (p.Barcode && p.Barcode === cleanVal) || 
+        (p.SKU && p.SKU === cleanVal) ||
+        (p.Name.toLowerCase() === cleanVal.toLowerCase())
+      );
+      
+      if (exactMatch) {
+        const existingIndex = newItems.findIndex((item, i) => 
+          i !== index && item.productId && String(item.productId) === String(exactMatch.ProductID)
+        );
+        
+        if (existingIndex !== -1) {
+          const addQty = parseFloat(newItems[index].quantity) || 1;
+          newItems[existingIndex].quantity = String(
+            parseFloat(newItems[existingIndex].quantity || 1) + addQty
+          );
+          newItems.splice(index, 1);
+          setToast({ type: 'success', message: `Merged: ${exactMatch.Name} quantity updated.` });
+        } else {
+          newItems[index].productId = exactMatch.ProductID;
+          newItems[index].unitCost = Number(exactMatch.Cost).toFixed(2);
+          newItems[index].searchQuery = `${exactMatch.Name} (${exactMatch.Barcode || exactMatch.SKU})`;
+          setToast({ type: 'success', message: `Selected: ${exactMatch.Name}` });
+        }
+      }
+    }
+    
+    setDirectCreditPurchaseForm(prev => ({ ...prev, items: newItems }));
+  };
+
+  const handleDirectCreditPurchaseSearchInputKeyDown = (e, index) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const query = (directCreditPurchaseForm.items[index].searchQuery || '').trim();
+      if (!query) return;
+      
+      const match = products.find(p => 
+        (p.Barcode && p.Barcode.toLowerCase() === query.toLowerCase()) || 
+        (p.SKU && p.SKU.toLowerCase() === query.toLowerCase()) ||
+        p.Name.toLowerCase().includes(query.toLowerCase())
+      );
+      
+      if (match) {
+        const newItems = [...directCreditPurchaseForm.items];
+        const existingIndex = newItems.findIndex((item, i) => 
+          i !== index && item.productId && String(item.productId) === String(match.ProductID)
+        );
+        
+        if (existingIndex !== -1) {
+          const addQty = parseFloat(newItems[index].quantity) || 1;
+          newItems[existingIndex].quantity = String(
+            parseFloat(newItems[existingIndex].quantity || 1) + addQty
+          );
+          newItems.splice(index, 1);
+          setDirectCreditPurchaseForm(prev => ({ ...prev, items: newItems }));
+          setToast({ type: 'success', message: `Merged: ${match.Name} quantity updated.` });
+        } else {
+          newItems[index].productId = match.ProductID;
+          newItems[index].unitCost = Number(match.Cost).toFixed(2);
+          newItems[index].searchQuery = `${match.Name} (${match.Barcode || match.SKU})`;
+          setDirectCreditPurchaseForm(prev => ({ ...prev, items: newItems }));
+          setToast({ type: 'success', message: `Selected: ${match.Name}` });
+        }
+        setActiveSearchIndex(null);
+      }
+    }
+  };
+
+  const handleAddDirectCreditPurchaseItem = () => {
+    setDirectCreditPurchaseForm(prev => ({
+      ...prev,
+      items: [...prev.items, {
+        productId: '',
+        searchQuery: '',
+        quantity: '1',
+        unitCost: '0.00',
+        discount: '0.00',
+        tax: '0.00',
+        batchNo: '',
+        mfgDate: '',
+        expiryDate: '',
+        warehouseName: 'Main Warehouse'
+      }]
+    }));
+  };
+
+  const handleRemoveDirectCreditPurchaseItem = (index) => {
+    if (directCreditPurchaseForm.items.length <= 1) return;
+    const newItems = directCreditPurchaseForm.items.filter((_, i) => i !== index);
+    setDirectCreditPurchaseForm(prev => ({ ...prev, items: newItems }));
+  };
+
+  const handleDirectCreditPurchaseSubmit = async (e) => {
+    e.preventDefault();
+    if (!canManagePurchases) return;
+
+    if (!directCreditPurchaseForm.supplierId) {
+      setToast({ type: 'error', message: 'Supplier is required.' });
+      return;
+    }
+
+    if (directCreditPurchaseForm.items.length === 0) {
+      setToast({ type: 'error', message: 'Direct purchase must contain at least 1 item.' });
+      return;
+    }
+
+    for (let i = 0; i < directCreditPurchaseForm.items.length; i++) {
+      const item = directCreditPurchaseForm.items[i];
+      if (!item.productId) {
+        setToast({ type: 'error', message: `Row ${i + 1}: Please select a valid product using the Smart Search field.` });
+        return;
+      }
+      const qty = parseFloat(item.quantity);
+      if (isNaN(qty) || qty <= 0) {
+        setToast({ type: 'error', message: `Row ${i + 1}: Quantity must be greater than zero.` });
+        return;
+      }
+      const isBatchTracked = products.find(p => p.ProductID === parseInt(item.productId, 10))?.IsBatchTracked;
+      if (isBatchTracked) {
+        if (!item.batchNo || !item.expiryDate) {
+          setToast({ type: 'error', message: `Row ${i + 1}: Product is batch tracked. Batch No and Expiry Date are required.` });
+          return;
+        }
+      }
+    }
+
+    try {
+      setActionLoading(true);
+      const res = await fetch(`${API_URL}/api/suppliers/direct-credit-purchase`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(directCreditPurchaseForm)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToast({ 
+          type: 'success', 
+          message: `Direct Credit Purchase Invoice ${data.PONumber} processed successfully. Stock and supplier payable outstanding balance updated.` 
+        });
+        setShowDirectCreditPurchaseModal(false);
+        fetchPurchaseOrders();
+        fetchSuppliers();
+        fetchProducts();
+        fetchWidgets();
+      } else {
+        setToast({ type: 'error', message: data.error || 'Failed to submit credit purchase.' });
+      }
+    } catch (err) {
+      setToast({ type: 'error', message: 'Connection failure.' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // --- REPORTS POSTING & EXPORTS ---
 
   const handleGenerateReport = async () => {
@@ -1521,13 +1982,21 @@ export default function Suppliers({ setToast }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ fontSize: '15px', fontWeight: '700' }}>Inbound Goods (GRN) & Purchase Invoices</h3>
                 {canManagePurchases && (
-                  <button className="btn btn-primary" onClick={() => {
-                    const pending = purchaseOrders.filter(po => po.Status === 'Ordered' || po.Status === 'GRN Received');
-                    setSelectedCreateInvoiceGrnPoId(pending[0]?.PurchaseOrderID || '');
-                    setShowCreateInvoiceGrnModal(true);
-                  }} style={{ height: '32px', padding: '0 12px', fontSize: '12px' }}>
-                    <Plus size={14} /> Create Invoice/GRN
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn btn-secondary" onClick={handleOpenDirectCashPurchaseModal} style={{ height: '32px', padding: '0 12px', fontSize: '12px', color: '#10b981', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)' }}>
+                      <Plus size={14} style={{ marginRight: '4px' }} /> Enter Cash Bill
+                    </button>
+                    <button className="btn btn-secondary" onClick={handleOpenDirectCreditPurchaseModal} style={{ height: '32px', padding: '0 12px', fontSize: '12px', color: '#3b82f6', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)' }}>
+                      <Plus size={14} style={{ marginRight: '4px' }} /> Enter Credit Invoice
+                    </button>
+                    <button className="btn btn-primary" onClick={() => {
+                      const pending = purchaseOrders.filter(po => po.Status === 'Ordered' || po.Status === 'GRN Received');
+                      setSelectedCreateInvoiceGrnPoId(pending[0]?.PurchaseOrderID || '');
+                      setShowCreateInvoiceGrnModal(true);
+                    }} style={{ height: '32px', padding: '0 12px', fontSize: '12px' }}>
+                      <Plus size={14} /> Create Invoice/GRN
+                    </button>
+                  </div>
                 )}
               </div>
 
@@ -1662,6 +2131,7 @@ export default function Suppliers({ setToast }) {
                         <th>Supplier Name</th>
                         <th>Return Date</th>
                         <th>Grand Total</th>
+                        <th>Return Type</th>
                         <th>Reason</th>
                         <th>Handled By</th>
                         <th>Branch</th>
@@ -1678,6 +2148,18 @@ export default function Suppliers({ setToast }) {
                             <td style={{ fontWeight: '600' }}>{ret.SupplierName}</td>
                             <td>{new Date(ret.ReturnDate).toLocaleDateString()}</td>
                             <td className="mono" style={{ fontWeight: '700', color: 'var(--danger)' }}>Rs. {Number(ret.TotalAmount).toFixed(2)}</td>
+                            <td>
+                              <span style={{
+                                padding: '3px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: '600',
+                                background: ret.ReturnType === 'Cash' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                color: ret.ReturnType === 'Cash' ? '#38bdf8' : '#f87171'
+                              }}>
+                                {ret.ReturnType || 'Credit'}
+                              </span>
+                            </td>
                             <td>{ret.Reason || '--'}</td>
                             <td>{ret.Username}</td>
                             <td>{ret.BranchName || 'Global'}</td>
@@ -3816,8 +4298,816 @@ export default function Suppliers({ setToast }) {
       })()}
 
       {/* ============================================================================
-         MODAL: RECORD SUPPLIER RETURN (DEBIT ADJUSTMENT)
+         MODAL: DIRECT CASH PURCHASE (ENTER BILL)
          ============================================================================ */}
+      {showDirectCashPurchaseModal && (() => {
+        const totalQty = directPurchaseForm.items.reduce((sum, item) => sum + parseFloat(item.quantity || 0), 0);
+        const subTotal = directPurchaseForm.items.reduce((sum, item) => sum + (parseFloat(item.quantity || 0) * parseFloat(item.unitCost || 0)), 0);
+        const grandTotal = subTotal; // simplified cash bill totals
+
+        return (
+          <div className="modal-overlay no-print">
+            <div className="modal-content glass-panel" style={{ width: '1300px', maxWidth: '95vw', padding: '24px', background: 'rgba(30, 41, 59, 0.96)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
+              
+              {/* Modal Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Receipt size={18} style={{ color: '#10b981' }} />
+                  <h3 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Direct Cash Purchase (Enter Bill)</h3>
+                </div>
+                <button type="button" className="close-btn" onClick={() => setShowDirectCashPurchaseModal(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleDirectPurchaseSubmit}>
+                {/* Header Fields */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '20px' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Bill Number</label>
+                    <input type="text" className="form-input" style={{ height: '32px', fontSize: '13px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', padding: '0 10px' }} value="BILL-XXXX (Auto)" disabled />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Supplier *</label>
+                    <select
+                      className="form-select"
+                      style={{ height: '32px', fontSize: '13px', padding: '0 10px' }}
+                      value={directPurchaseForm.supplierId}
+                      onChange={(e) => setDirectPurchaseForm(prev => ({ ...prev, supplierId: e.target.value }))}
+                      required
+                    >
+                      {suppliers.map(s => (
+                        <option key={s.SupplierID} value={s.SupplierID}>{s.SupplierName}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Supplier Invoice/Reference No.</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      style={{ height: '32px', fontSize: '13px', padding: '0 10px' }}
+                      placeholder="e.g. INV-1004"
+                      value={directPurchaseForm.invoiceNumber}
+                      onChange={(e) => setDirectPurchaseForm(prev => ({ ...prev, invoiceNumber: e.target.value }))}
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Purchase Date *</label>
+                    <input
+                      type="date"
+                      className="form-input"
+                      style={{ height: '32px', fontSize: '13px', padding: '0 10px' }}
+                      value={directPurchaseForm.invoiceDate}
+                      onChange={(e) => setDirectPurchaseForm(prev => ({ ...prev, invoiceDate: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Store / Destination Branch *</label>
+                    <select
+                      className="form-select"
+                      style={{ height: '32px', fontSize: '13px', padding: '0 10px' }}
+                      value={directPurchaseForm.branchName}
+                      onChange={(e) => setDirectPurchaseForm(prev => ({ ...prev, branchName: e.target.value }))}
+                      required
+                    >
+                      <option value="Main Store">Main Store</option>
+                      <option value="Colombo Branch">Colombo Branch</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Items Table */}
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label className="form-label" style={{ marginBottom: 0, fontWeight: '700' }}>Purchased Products</label>
+                    <button type="button" className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '12px' }} onClick={handleAddDirectPurchaseItem}>
+                      + Add Item Row
+                    </button>
+                  </div>
+
+                  <div className="glass-panel" style={{ padding: 0, maxHeight: '280px', overflowY: 'auto' }}>
+                    <table className="table-glass" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: '11px' }}>Product Smart Search (Name, Barcode, SKU)</th>
+                          <th style={{ width: '80px', padding: '8px 12px', textAlign: 'center', fontSize: '11px' }}>Qty</th>
+                          <th style={{ width: '100px', padding: '8px 12px', textAlign: 'right', fontSize: '11px' }}>Cost Price</th>
+                          <th style={{ width: '100px', padding: '8px 12px', textAlign: 'left', fontSize: '11px' }}>Batch No.</th>
+                          <th style={{ width: '120px', padding: '8px 12px', textAlign: 'left', fontSize: '11px' }}>Expiry Date</th>
+                          <th style={{ width: '110px', padding: '8px 12px', textAlign: 'left', fontSize: '11px' }}>Warehouse</th>
+                          <th style={{ width: '110px', padding: '8px 12px', textAlign: 'right', fontSize: '11px' }}>Amount</th>
+                          <th style={{ width: '45px', padding: '8px' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {directPurchaseForm.items.map((item, index) => {
+                          const prod = products.find(p => p.ProductID === parseInt(item.productId, 10));
+                          const isBatchTracked = prod?.IsBatchTracked || false;
+                          const amount = parseFloat(item.quantity || 0) * parseFloat(item.unitCost || 0);
+
+                          return (
+                            <tr key={index}>
+                              <td style={{ padding: '6px', position: 'relative' }}>
+                                <input
+                                  type="text"
+                                  className="form-input po-item-select"
+                                  style={{ width: '100%', height: '32px', fontSize: '13px', padding: '0 10px' }}
+                                  value={item.searchQuery || ''}
+                                  onChange={(e) => handleDirectPurchaseSearchInputChange(index, e.target.value)}
+                                  onFocus={() => setActiveSearchIndex(index)}
+                                  onBlur={() => setTimeout(() => setActiveSearchIndex(null), 250)}
+                                  onKeyDown={(e) => handleDirectPurchaseSearchInputKeyDown(e, index)}
+                                  placeholder="Type Name, Barcode, or SKU..."
+                                  required
+                                />
+                                
+                                {activeSearchIndex === index && (() => {
+                                  const query = (item.searchQuery || '').toLowerCase().trim();
+                                  const filteredProducts = products.filter(p => {
+                                    if (!query) return true;
+                                    return (
+                                      p.Name.toLowerCase().includes(query) ||
+                                      (p.Barcode && p.Barcode.toLowerCase().includes(query)) ||
+                                      (p.SKU && p.SKU.toLowerCase().includes(query))
+                                    );
+                                  }).slice(0, 8);
+
+                                  return (
+                                    <div 
+                                      className="glass-panel" 
+                                      style={{ 
+                                        position: 'absolute', 
+                                        left: '6px', 
+                                        right: '6px', 
+                                        top: '38px', 
+                                        zIndex: 999, 
+                                        maxHeight: '200px', 
+                                        overflowY: 'auto', 
+                                        background: 'rgba(30, 41, 59, 0.98)', 
+                                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
+                                        borderRadius: 'var(--radius-sm)',
+                                        padding: '4px'
+                                      }}
+                                    >
+                                      {filteredProducts.length === 0 ? (
+                                        <div style={{ padding: '8px', fontSize: '12.5px', color: 'var(--text-secondary)', textAlign: 'center' }}>
+                                          No products found
+                                        </div>
+                                      ) : (
+                                        filteredProducts.map(p => (
+                                          <div
+                                            key={p.ProductID}
+                                            className="search-item"
+                                            style={{
+                                              padding: '6px 10px',
+                                              cursor: 'pointer',
+                                              fontSize: '12.5px',
+                                              borderRadius: 'var(--radius-xs)',
+                                              color: 'var(--text-secondary)',
+                                              display: 'flex',
+                                              justifyContent: 'space-between'
+                                            }}
+                                            onMouseDown={() => {
+                                              const newItems = [...directPurchaseForm.items];
+                                              const existIdx = newItems.findIndex((x, i) => i !== index && String(x.productId) === String(p.ProductID));
+                                              if (existIdx !== -1) {
+                                                newItems[existIdx].quantity = String(parseFloat(newItems[existIdx].quantity || 1) + 1);
+                                                newItems.splice(index, 1);
+                                                setToast({ type: 'success', message: `Merged: ${p.Name}` });
+                                              } else {
+                                                newItems[index].productId = p.ProductID;
+                                                newItems[index].unitCost = Number(p.Cost).toFixed(2);
+                                                newItems[index].searchQuery = `${p.Name} (${p.Barcode || p.SKU})`;
+                                              }
+                                              setDirectPurchaseForm(prev => ({ ...prev, items: newItems }));
+                                              setActiveSearchIndex(null);
+                                            }}
+                                          >
+                                            <span style={{ fontWeight: '600', color: 'white' }}>{p.Name}</span>
+                                            <span style={{ fontSize: '11px', opacity: 0.7 }}>Barcode: {p.Barcode || '--'}</span>
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                              <td style={{ padding: '6px' }}>
+                                <input
+                                  type="number"
+                                  className="form-input"
+                                  style={{ width: '100%', height: '32px', fontSize: '13px', textAlign: 'center', padding: '0 6px' }}
+                                  value={item.quantity}
+                                  onChange={(e) => handleDirectPurchaseItemChange(index, 'quantity', e.target.value)}
+                                  min="0.001"
+                                  step="any"
+                                  required
+                                />
+                              </td>
+                              <td style={{ padding: '6px' }}>
+                                <input
+                                  type="number"
+                                  className="form-input"
+                                  style={{ width: '100%', height: '32px', fontSize: '13px', textAlign: 'right', padding: '0 6px' }}
+                                  value={item.unitCost}
+                                  onChange={(e) => handleDirectPurchaseItemChange(index, 'unitCost', e.target.value)}
+                                  min="0.00"
+                                  step="0.01"
+                                  required
+                                />
+                              </td>
+                              <td style={{ padding: '6px' }}>
+                                <input
+                                  type="text"
+                                  className="form-input"
+                                  style={{ width: '100%', height: '32px', fontSize: '13px', padding: '0 6px' }}
+                                  placeholder={isBatchTracked ? "Batch No" : "N/A"}
+                                  value={item.batchNo}
+                                  onChange={(e) => handleDirectPurchaseItemChange(index, 'batchNo', e.target.value)}
+                                  disabled={!isBatchTracked}
+                                  required={isBatchTracked}
+                                />
+                              </td>
+                              <td style={{ padding: '6px' }}>
+                                <input
+                                  type="date"
+                                  className="form-input"
+                                  style={{ width: '100%', height: '32px', fontSize: '13px', padding: '0 6px' }}
+                                  value={item.expiryDate || ''}
+                                  onChange={(e) => handleDirectPurchaseItemChange(index, 'expiryDate', e.target.value)}
+                                  disabled={!isBatchTracked}
+                                  required={isBatchTracked}
+                                />
+                              </td>
+                              <td style={{ padding: '6px' }}>
+                                <select
+                                  className="form-select"
+                                  style={{ width: '100%', height: '32px', fontSize: '13px', padding: '0' }}
+                                  value={item.warehouseName}
+                                  onChange={(e) => handleDirectPurchaseItemChange(index, 'warehouseName', e.target.value)}
+                                >
+                                  <option value="Main Warehouse">Main WH</option>
+                                  <option value="Store Branch WH">Store WH</option>
+                                </select>
+                              </td>
+                              <td style={{ padding: '6px', textAlign: 'right', fontWeight: '700', color: 'white', verticalAlign: 'middle', fontSize: '13px' }} className="mono">
+                                Rs. {amount.toFixed(2)}
+                              </td>
+                              <td style={{ padding: '6px', textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-danger btn-icon"
+                                  style={{ width: '28px', height: '28px' }}
+                                  onClick={() => handleRemoveDirectPurchaseItem(index)}
+                                  disabled={directPurchaseForm.items.length <= 1}
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Immediate Cash Payment Information */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '20px' }}>
+                  <h4 style={{ fontSize: '13px', fontWeight: '700', color: '#10b981', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Coins size={14} /> Immediate Payment (Cash Book Settlement)
+                  </h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: '16px' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Payment Mode *</label>
+                      <select
+                        className="form-select"
+                        style={{ height: '32px', fontSize: '13px' }}
+                        value={directPurchaseForm.paymentMethod}
+                        onChange={(e) => setDirectPurchaseForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
+                        required
+                      >
+                        <option value="Cash">Cash Account</option>
+                        <option value="Bank Transfer">Bank Transfer / PETTY</option>
+                        <option value="Cheque">Company Cheque</option>
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Payment Reference / Chq No.</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        style={{ height: '32px', fontSize: '13px' }}
+                        placeholder="e.g. TXN987213"
+                        value={directPurchaseForm.paymentReference}
+                        onChange={(e) => setDirectPurchaseForm(prev => ({ ...prev, paymentReference: e.target.value }))}
+                      />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Billing Notes</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        style={{ height: '32px', fontSize: '13px' }}
+                        placeholder="Direct cash procurement of warehouse stock"
+                        value={directPurchaseForm.notes}
+                        onChange={(e) => setDirectPurchaseForm(prev => ({ ...prev, notes: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer and Summary */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '16px' }}>
+                  <div style={{ display: 'flex', gap: '24px' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      Total Items: <strong style={{ color: 'white', fontSize: '13px' }}>{totalQty.toFixed(0)}</strong>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      Grand Total: <strong style={{ color: '#10b981', fontSize: '14px' }} className="mono">Rs. {grandTotal.toFixed(2)}</strong>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowDirectCashPurchaseModal(false)} style={{ fontSize: '12.5px', height: '34px' }}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary" disabled={actionLoading} style={{ fontSize: '12.5px', height: '34px', background: 'linear-gradient(135deg, #10b981, #059669)', border: 'none', color: '#fff', padding: '0 20px', borderRadius: 'var(--radius-md)', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {actionLoading ? 'Processing...' : '✔ Save Bill & Post Payment'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ============================================================================
+         MODAL: DIRECT CREDIT PURCHASE INVOICE (ENTER CREDIT INVOICE)
+         ============================================================================ */}
+      {showDirectCreditPurchaseModal && (() => {
+        const totalQty = directCreditPurchaseForm.items.reduce((sum, item) => sum + parseFloat(item.quantity || 0), 0);
+        const subTotal = directCreditPurchaseForm.items.reduce((sum, item) => sum + (parseFloat(item.quantity || 0) * parseFloat(item.unitCost || 0)), 0);
+        const totalDiscount = directCreditPurchaseForm.items.reduce((sum, item) => sum + parseFloat(item.discount || 0), 0);
+        const totalTax = directCreditPurchaseForm.items.reduce((sum, item) => sum + parseFloat(item.tax || 0), 0);
+        const grandTotal = subTotal - totalDiscount + totalTax;
+        const paidAmountVal = parseFloat(directCreditPurchaseForm.paidAmount || 0);
+        const balanceDue = Math.max(0, grandTotal - paidAmountVal);
+
+        let statusText = 'Unpaid';
+        let statusColor = '#ef4444';
+        if (paidAmountVal >= grandTotal && grandTotal > 0) {
+          statusText = 'Paid';
+          statusColor = '#10b981';
+        } else if (paidAmountVal > 0) {
+          statusText = 'Partially Paid';
+          statusColor = '#f59e0b';
+        }
+
+        return (
+          <div className="modal-overlay no-print">
+            <div className="modal-content glass-panel" style={{ width: '1350px', maxWidth: '95vw', padding: '24px', background: 'rgba(30, 41, 59, 0.96)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
+              
+              {/* Modal Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Receipt size={18} style={{ color: '#3b82f6' }} />
+                  <h3 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Direct Credit Purchase Invoice</h3>
+                  <span style={{ fontSize: '11px', fontWeight: '600', padding: '2px 8px', borderRadius: '12px', background: `rgba(${statusColor === '#10b981' ? '16,185,129' : statusColor === '#f59e0b' ? '245,158,11' : '239,68,68'}, 0.15)`, color: statusColor, marginLeft: '8px' }}>
+                    {statusText}
+                  </span>
+                </div>
+                <button type="button" className="close-btn" onClick={() => setShowDirectCreditPurchaseModal(false)} style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleDirectCreditPurchaseSubmit}>
+                {/* Header Fields */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '20px' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Bill Number</label>
+                    <input type="text" className="form-input" style={{ height: '32px', fontSize: '13px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', padding: '0 10px' }} value="BILL-XXXX (Auto)" disabled />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Supplier *</label>
+                    <select
+                      className="form-select"
+                      style={{ height: '32px', fontSize: '13px', padding: '0 10px' }}
+                      value={directCreditPurchaseForm.supplierId}
+                      onChange={(e) => {
+                        const supplierId = e.target.value;
+                        const sup = suppliers.find(s => String(s.SupplierID) === String(supplierId));
+                        const creditPeriod = parseInt(sup?.CreditPeriodDays || '30', 10);
+                        const dueDate = new Date(directCreditPurchaseForm.invoiceDate);
+                        dueDate.setDate(dueDate.getDate() + creditPeriod);
+                        setDirectCreditPurchaseForm(prev => ({
+                          ...prev,
+                          supplierId,
+                          dueDate: dueDate.toISOString().split('T')[0]
+                        }));
+                      }}
+                      required
+                    >
+                      {suppliers.map(s => (
+                        <option key={s.SupplierID} value={s.SupplierID}>{s.SupplierName}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Supplier Invoice/Ref No. *</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      style={{ height: '32px', fontSize: '13px', padding: '0 10px' }}
+                      placeholder="e.g. INV-1004"
+                      value={directCreditPurchaseForm.invoiceNumber}
+                      onChange={(e) => setDirectCreditPurchaseForm(prev => ({ ...prev, invoiceNumber: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Invoice Date *</label>
+                    <input
+                      type="date"
+                      className="form-input"
+                      style={{ height: '32px', fontSize: '13px', padding: '0 10px' }}
+                      value={directCreditPurchaseForm.invoiceDate}
+                      onChange={(e) => {
+                        const invDateStr = e.target.value;
+                        const sup = suppliers.find(s => String(s.SupplierID) === String(directCreditPurchaseForm.supplierId));
+                        const creditPeriod = parseInt(sup?.CreditPeriodDays || '30', 10);
+                        const dueDate = new Date(invDateStr);
+                        dueDate.setDate(dueDate.getDate() + creditPeriod);
+                        setDirectCreditPurchaseForm(prev => ({
+                          ...prev,
+                          invoiceDate: invDateStr,
+                          dueDate: dueDate.toISOString().split('T')[0]
+                        }));
+                      }}
+                      required
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Due Date *</label>
+                    <input
+                      type="date"
+                      className="form-input"
+                      style={{ height: '32px', fontSize: '13px', padding: '0 10px' }}
+                      value={directCreditPurchaseForm.dueDate}
+                      onChange={(e) => setDirectCreditPurchaseForm(prev => ({ ...prev, dueDate: e.target.value }))}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '16px', marginBottom: '20px' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Store / Destination Branch *</label>
+                    <select
+                      className="form-select"
+                      style={{ height: '32px', fontSize: '13px', padding: '0 10px' }}
+                      value={directCreditPurchaseForm.branchName}
+                      onChange={(e) => setDirectCreditPurchaseForm(prev => ({ ...prev, branchName: e.target.value }))}
+                      required
+                    >
+                      <option value="Main Store">Main Store</option>
+                      <option value="Colombo Branch">Colombo Branch</option>
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Notes</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      style={{ height: '32px', fontSize: '13px', padding: '0 10px' }}
+                      placeholder="e.g. Direct credit procurement of warehouse stock"
+                      value={directCreditPurchaseForm.notes}
+                      onChange={(e) => setDirectCreditPurchaseForm(prev => ({ ...prev, notes: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                {/* Items Table */}
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <label className="form-label" style={{ marginBottom: 0, fontWeight: '700' }}>Purchased Products</label>
+                    <button type="button" className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: '12px' }} onClick={handleAddDirectCreditPurchaseItem}>
+                      + Add Item Row
+                    </button>
+                  </div>
+
+                  <div className="glass-panel" style={{ padding: 0, maxHeight: '280px', overflowY: 'auto' }}>
+                    <table className="table-glass" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ padding: '8px 12px', textAlign: 'left', fontSize: '11px' }}>Product Smart Search (Name, Barcode, SKU)</th>
+                          <th style={{ width: '80px', padding: '8px 12px', textAlign: 'center', fontSize: '11px' }}>Qty</th>
+                          <th style={{ width: '100px', padding: '8px 12px', textAlign: 'right', fontSize: '11px' }}>Cost Price</th>
+                          <th style={{ width: '90px', padding: '8px 12px', textAlign: 'right', fontSize: '11px' }}>Discount</th>
+                          <th style={{ width: '90px', padding: '8px 12px', textAlign: 'right', fontSize: '11px' }}>Tax</th>
+                          <th style={{ width: '100px', padding: '8px 12px', textAlign: 'left', fontSize: '11px' }}>Batch No.</th>
+                          <th style={{ width: '120px', padding: '8px 12px', textAlign: 'left', fontSize: '11px' }}>Expiry Date</th>
+                          <th style={{ width: '110px', padding: '8px 12px', textAlign: 'left', fontSize: '11px' }}>Warehouse</th>
+                          <th style={{ width: '110px', padding: '8px 12px', textAlign: 'right', fontSize: '11px' }}>Amount</th>
+                          <th style={{ width: '45px', padding: '8px' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {directCreditPurchaseForm.items.map((item, index) => {
+                          const prod = products.find(p => p.ProductID === parseInt(item.productId, 10));
+                          const isBatchTracked = prod?.IsBatchTracked || false;
+                          const amount = (parseFloat(item.quantity || 0) * parseFloat(item.unitCost || 0)) - parseFloat(item.discount || 0) + parseFloat(item.tax || 0);
+
+                          return (
+                            <tr key={index}>
+                              <td style={{ padding: '6px', position: 'relative' }}>
+                                <input
+                                  type="text"
+                                  className="form-input po-item-select"
+                                  style={{ width: '100%', height: '32px', fontSize: '13px', padding: '0 10px' }}
+                                  value={item.searchQuery || ''}
+                                  onChange={(e) => handleDirectCreditPurchaseSearchInputChange(index, e.target.value)}
+                                  onFocus={() => setActiveSearchIndex(index)}
+                                  onBlur={() => setTimeout(() => setActiveSearchIndex(null), 250)}
+                                  onKeyDown={(e) => handleDirectCreditPurchaseSearchInputKeyDown(e, index)}
+                                  placeholder="Type Name, Barcode, or SKU..."
+                                  required
+                                />
+                                
+                                {activeSearchIndex === index && (() => {
+                                  const query = (item.searchQuery || '').toLowerCase().trim();
+                                  const filteredProducts = products.filter(p => {
+                                    if (!query) return true;
+                                    return (
+                                      p.Name.toLowerCase().includes(query) ||
+                                      (p.Barcode && p.Barcode.toLowerCase().includes(query)) ||
+                                      (p.SKU && p.SKU.toLowerCase().includes(query))
+                                    );
+                                  }).slice(0, 8);
+
+                                  return (
+                                    <div 
+                                      className="glass-panel" 
+                                      style={{ 
+                                        position: 'absolute', 
+                                        left: '6px', 
+                                        right: '6px', 
+                                        top: '38px', 
+                                        zIndex: 999, 
+                                        maxHeight: '200px', 
+                                        overflowY: 'auto', 
+                                        background: 'rgba(30, 41, 59, 0.98)', 
+                                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
+                                        borderRadius: 'var(--radius-sm)',
+                                        padding: '4px'
+                                      }}
+                                    >
+                                      {filteredProducts.length === 0 ? (
+                                        <div style={{ padding: '8px', fontSize: '12.5px', color: 'var(--text-secondary)', textAlign: 'center' }}>
+                                          No products found
+                                        </div>
+                                      ) : (
+                                        filteredProducts.map(p => (
+                                          <div
+                                            key={p.ProductID}
+                                            className="search-item"
+                                            style={{
+                                              padding: '6px 10px',
+                                              cursor: 'pointer',
+                                              fontSize: '12.5px',
+                                              borderRadius: 'var(--radius-xs)',
+                                              color: 'var(--text-secondary)',
+                                              display: 'flex',
+                                              justifyContent: 'space-between'
+                                            }}
+                                            onMouseDown={() => {
+                                              const newItems = [...directCreditPurchaseForm.items];
+                                              const existIdx = newItems.findIndex((x, i) => i !== index && String(x.productId) === String(p.ProductID));
+                                              if (existIdx !== -1) {
+                                                newItems[existIdx].quantity = String(parseFloat(newItems[existIdx].quantity || 1) + 1);
+                                                newItems.splice(index, 1);
+                                                setToast({ type: 'success', message: `Merged: ${p.Name}` });
+                                              } else {
+                                                newItems[index].productId = p.ProductID;
+                                                newItems[index].unitCost = Number(p.Cost).toFixed(2);
+                                                newItems[index].searchQuery = `${p.Name} (${p.Barcode || p.SKU})`;
+                                              }
+                                              setDirectCreditPurchaseForm(prev => ({ ...prev, items: newItems }));
+                                              setActiveSearchIndex(null);
+                                            }}
+                                          >
+                                            <span style={{ fontWeight: '600', color: 'white' }}>{p.Name}</span>
+                                            <span style={{ fontSize: '11px', opacity: 0.7 }}>Barcode: {p.Barcode || '--'}</span>
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                              <td style={{ padding: '6px' }}>
+                                <input
+                                  type="number"
+                                  className="form-input"
+                                  style={{ width: '100%', height: '32px', fontSize: '13px', textAlign: 'center', padding: '0 6px' }}
+                                  value={item.quantity}
+                                  onChange={(e) => handleDirectCreditPurchaseItemChange(index, 'quantity', e.target.value)}
+                                  min="0.001"
+                                  step="any"
+                                  required
+                                />
+                              </td>
+                              <td style={{ padding: '6px' }}>
+                                <input
+                                  type="number"
+                                  className="form-input"
+                                  style={{ width: '100%', height: '32px', fontSize: '13px', textAlign: 'right', padding: '0 6px' }}
+                                  value={item.unitCost}
+                                  onChange={(e) => handleDirectCreditPurchaseItemChange(index, 'unitCost', e.target.value)}
+                                  min="0.00"
+                                  step="0.01"
+                                  required
+                                />
+                              </td>
+                              <td style={{ padding: '6px' }}>
+                                <input
+                                  type="number"
+                                  className="form-input"
+                                  style={{ width: '100%', height: '32px', fontSize: '13px', textAlign: 'right', padding: '0 6px' }}
+                                  value={item.discount}
+                                  onChange={(e) => handleDirectCreditPurchaseItemChange(index, 'discount', e.target.value)}
+                                  min="0.00"
+                                  step="0.01"
+                                  required
+                                />
+                              </td>
+                              <td style={{ padding: '6px' }}>
+                                <input
+                                  type="number"
+                                  className="form-input"
+                                  style={{ width: '100%', height: '32px', fontSize: '13px', textAlign: 'right', padding: '0 6px' }}
+                                  value={item.tax}
+                                  onChange={(e) => handleDirectCreditPurchaseItemChange(index, 'tax', e.target.value)}
+                                  min="0.00"
+                                  step="0.01"
+                                  required
+                                />
+                              </td>
+                              <td style={{ padding: '6px' }}>
+                                <input
+                                  type="text"
+                                  className="form-input"
+                                  style={{ width: '100%', height: '32px', fontSize: '13px', padding: '0 6px' }}
+                                  placeholder={isBatchTracked ? "Batch No" : "N/A"}
+                                  value={item.batchNo}
+                                  onChange={(e) => handleDirectCreditPurchaseItemChange(index, 'batchNo', e.target.value)}
+                                  disabled={!isBatchTracked}
+                                  required={isBatchTracked}
+                                />
+                              </td>
+                              <td style={{ padding: '6px' }}>
+                                <input
+                                  type="date"
+                                  className="form-input"
+                                  style={{ width: '100%', height: '32px', fontSize: '13px', padding: '0 6px' }}
+                                  value={item.expiryDate || ''}
+                                  onChange={(e) => handleDirectCreditPurchaseItemChange(index, 'expiryDate', e.target.value)}
+                                  disabled={!isBatchTracked}
+                                  required={isBatchTracked}
+                                />
+                              </td>
+                              <td style={{ padding: '6px' }}>
+                                <select
+                                  className="form-select"
+                                  style={{ width: '100%', height: '32px', fontSize: '13px', padding: '0' }}
+                                  value={item.warehouseName}
+                                  onChange={(e) => handleDirectCreditPurchaseItemChange(index, 'warehouseName', e.target.value)}
+                                >
+                                  <option value="Main Warehouse">Main WH</option>
+                                  <option value="Store Branch WH">Store WH</option>
+                                </select>
+                              </td>
+                              <td style={{ padding: '6px', textAlign: 'right', fontWeight: '700', color: 'white', verticalAlign: 'middle', fontSize: '13px' }} className="mono">
+                                Rs. {amount.toFixed(2)}
+                              </td>
+                              <td style={{ padding: '6px', textAlign: 'center' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-danger btn-icon"
+                                  style={{ width: '28px', height: '28px' }}
+                                  onClick={() => handleRemoveDirectCreditPurchaseItem(index)}
+                                  disabled={directCreditPurchaseForm.items.length <= 1}
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Credit Payment Footer Information */}
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.05)', marginBottom: '20px' }}>
+                  <h4 style={{ fontSize: '13px', fontWeight: '700', color: '#3b82f6', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Coins size={14} /> Immediate Payment Allocation (Optional)
+                  </h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.2fr 2fr 2fr', gap: '16px' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Paid Amount</label>
+                      <input
+                        type="number"
+                        className="form-input"
+                        style={{ height: '32px', fontSize: '13px' }}
+                        value={directCreditPurchaseForm.paidAmount}
+                        onChange={(e) => setDirectCreditPurchaseForm(prev => ({ ...prev, paidAmount: e.target.value }))}
+                        min="0.00"
+                        max={grandTotal.toFixed(2)}
+                        step="0.01"
+                      />
+                    </div>
+                    {paidAmountVal > 0 && (
+                      <>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Payment Mode *</label>
+                          <select
+                            className="form-select"
+                            style={{ height: '32px', fontSize: '13px' }}
+                            value={directCreditPurchaseForm.paymentMethod}
+                            onChange={(e) => setDirectCreditPurchaseForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
+                            required
+                          >
+                            <option value="Cash">Cash Account</option>
+                            <option value="Bank Transfer">Bank Transfer / PETTY</option>
+                            <option value="Cheque">Company Cheque</option>
+                          </select>
+                        </div>
+                        <div className="form-group" style={{ margin: 0 }}>
+                          <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Payment Reference / Chq No. *</label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            style={{ height: '32px', fontSize: '13px' }}
+                            placeholder="e.g. TXN987213"
+                            value={directCreditPurchaseForm.paymentReference}
+                            onChange={(e) => setDirectCreditPurchaseForm(prev => ({ ...prev, paymentReference: e.target.value }))}
+                            required
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Footer and Summary */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '16px' }}>
+                  <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      Total Items: <strong style={{ color: 'white', fontSize: '13px' }}>{totalQty.toFixed(0)}</strong>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      Subtotal: <strong style={{ color: 'white', fontSize: '13px' }} className="mono">Rs. {subTotal.toFixed(2)}</strong>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      Discount: <strong style={{ color: '#ef4444', fontSize: '13px' }} className="mono">-Rs. {totalDiscount.toFixed(2)}</strong>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      Tax: <strong style={{ color: '#10b981', fontSize: '13px' }} className="mono">+Rs. {totalTax.toFixed(2)}</strong>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      Grand Total: <strong style={{ color: 'white', fontSize: '14px' }} className="mono">Rs. {grandTotal.toFixed(2)}</strong>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      Paid Amount: <strong style={{ color: '#10b981', fontSize: '14px' }} className="mono">Rs. {paidAmountVal.toFixed(2)}</strong>
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      Balance Due: <strong style={{ color: '#ef4444', fontSize: '14px' }} className="mono">Rs. {balanceDue.toFixed(2)}</strong>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => setShowDirectCreditPurchaseModal(false)} style={{ fontSize: '12.5px', height: '34px' }}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn btn-primary" disabled={actionLoading} style={{ fontSize: '12.5px', height: '34px', background: 'linear-gradient(135deg, #3b82f6, #2563eb)', border: 'none', color: '#fff', padding: '0 20px', borderRadius: 'var(--radius-md)', fontWeight: '700', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {actionLoading ? 'Processing...' : '✔ Save Credit Bill & Post Ledger'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
       {showReturnModal && (
         <div className="modal-overlay no-print">
           <div className="modal-content glass-panel" style={{ width: '800px', background: 'rgba(30, 41, 59, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)', padding: '24px' }}>
@@ -3826,7 +5116,7 @@ export default function Suppliers({ setToast }) {
             </h3>
 
             <form onSubmit={handleReturnSubmit}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '20px', marginBottom: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 0.8fr', gap: '20px', marginBottom: '16px' }}>
                 <div className="form-group">
                   <label className="form-label">Select Supplier</label>
                   <select
@@ -3838,6 +5128,19 @@ export default function Suppliers({ setToast }) {
                     {suppliers.map(s => (
                       <option key={s.SupplierID} value={s.SupplierID}>{s.SupplierName} (Owes: Rs. {Number(s.CurrentBalance).toFixed(2)})</option>
                     ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Return Type</label>
+                  <select
+                    className="form-select"
+                    value={returnForm.returnType}
+                    onChange={(e) => setReturnForm(prev => ({ ...prev, returnType: e.target.value }))}
+                    required
+                  >
+                    <option value="Credit">Credit Return (Deduct Owed Balance)</option>
+                    <option value="Cash">Cash Return (Refund Cash / No Debt Change)</option>
                   </select>
                 </div>
 
@@ -3968,7 +5271,7 @@ export default function Suppliers({ setToast }) {
               </div>
 
               {/* Detail Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px', marginBottom: '24px', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <div>
                   <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Return Number</span>
                   <strong className="mono" style={{ fontSize: '14px', color: 'white' }}>{selectedReturn.ReturnNumber}</strong>
@@ -3985,11 +5288,26 @@ export default function Suppliers({ setToast }) {
                   <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Handled By</span>
                   <strong style={{ fontSize: '13px', color: 'white' }}>{selectedReturn.Username}</strong>
                 </div>
+                <div>
+                  <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Return Type</span>
+                  <span style={{
+                    display: 'inline-block',
+                    padding: '3px 8px',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    fontWeight: '600',
+                    background: selectedReturn.ReturnType === 'Cash' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                    color: selectedReturn.ReturnType === 'Cash' ? '#38bdf8' : '#f87171',
+                    marginTop: '2px'
+                  }}>
+                    {selectedReturn.ReturnType || 'Credit'}
+                  </span>
+                </div>
                 <div style={{ marginTop: '10px' }}>
                   <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Branch</span>
                   <strong style={{ fontSize: '13px', color: 'white' }}>{selectedReturn.BranchName || 'Global'}</strong>
                 </div>
-                <div style={{ marginTop: '10px', gridColumn: 'span 3' }}>
+                <div style={{ marginTop: '10px', gridColumn: 'span 4' }}>
                   <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>Reason</span>
                   <strong style={{ fontSize: '13px', color: 'white' }}>{selectedReturn.Reason || '--'}</strong>
                 </div>

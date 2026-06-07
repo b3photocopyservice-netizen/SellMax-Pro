@@ -267,12 +267,12 @@ class SupplierRepository {
     const poResult = await db.query(`
       INSERT INTO dbo.PurchaseOrders (
         CompanyID, SupplierID, UserID, PONumber, Subtotal, DiscountAmount, TaxAmount, 
-        TotalAmount, Status, BranchName, Notes, ExpectedDeliveryDate
+        TotalAmount, Status, BranchName, Notes, ExpectedDeliveryDate, PurchaseType
       )
       OUTPUT inserted.PurchaseOrderID, inserted.PONumber
       VALUES (
         @CompanyID, @SupplierID, @UserID, @PONumber, @Subtotal, @DiscountAmount, @TaxAmount, 
-        @TotalAmount, @Status, @BranchName, @Notes, @ExpectedDeliveryDate
+        @TotalAmount, @Status, @BranchName, @Notes, @ExpectedDeliveryDate, 'Credit'
       )
     `, {
       CompanyID: companyId,
@@ -308,6 +308,425 @@ class SupplierRepository {
         Subtotal: itemSubtotal,
         Discount: parseFloat(item.discount || 0),
         Tax: parseFloat(item.tax || 0)
+      });
+    }
+
+    return poResult.recordset[0];
+  }
+
+  async createDirectCashPurchase(companyId, userId, data) {
+    const prefix = 'BILL-' + new Date().getFullYear();
+    const result = await db.query(`
+      SELECT TOP 1 PONumber 
+      FROM dbo.PurchaseOrders 
+      WHERE CompanyID = @CompanyID AND PONumber LIKE @Prefix + '%'
+      ORDER BY PONumber DESC
+    `, { CompanyID: companyId, Prefix: prefix });
+
+    let count = 1;
+    if (result.recordset.length > 0) {
+      const last = result.recordset[0].PONumber;
+      const numStr = last.replace(prefix + '-', '');
+      const num = parseInt(numStr, 10);
+      if (!isNaN(num)) {
+        count = num + 1;
+      }
+    }
+    const billNumber = `${prefix}-${count.toString().padStart(4, '0')}`;
+    
+    // Calculate totals
+    const subtotal = data.items.reduce((sum, item) => sum + (parseFloat(item.quantity) * parseFloat(item.unitCost)), 0);
+    const itemDiscounts = data.items.reduce((sum, item) => sum + parseFloat(item.discount || 0), 0);
+    const itemTaxes = data.items.reduce((sum, item) => sum + parseFloat(item.tax || 0), 0);
+    
+    const discountAmount = parseFloat(data.discountAmount || itemDiscounts || 0);
+    const taxAmount = parseFloat(data.taxAmount || itemTaxes || 0);
+    const totalAmount = subtotal - discountAmount + taxAmount;
+
+    const invoiceNumber = data.invoiceNumber || 'CSH-' + Date.now().toString().slice(-8);
+    const invoiceDate = data.invoiceDate ? new Date(data.invoiceDate) : new Date();
+
+    // 1. Insert header into PurchaseOrders
+    const poResult = await db.query(`
+      INSERT INTO dbo.PurchaseOrders (
+        CompanyID, SupplierID, UserID, PONumber, Subtotal, DiscountAmount, TaxAmount, 
+        TotalAmount, Status, PurchaseType, PaymentStatus, AmountPaid, BranchName, Notes, 
+        InvoiceNumber, InvoiceDate, GRNNumber, GRNDate
+      )
+      OUTPUT inserted.PurchaseOrderID, inserted.PONumber, inserted.TotalAmount, inserted.Status, inserted.PurchaseType
+      VALUES (
+        @CompanyID, @SupplierID, @UserID, @PONumber, @Subtotal, @DiscountAmount, @TaxAmount, 
+        @TotalAmount, 'Invoiced', 'Cash', 'Paid', @TotalAmount, @BranchName, @Notes,
+        @InvoiceNumber, @InvoiceDate, @GRNNumber, @GRNDate
+      )
+    `, {
+      CompanyID: companyId,
+      SupplierID: data.supplierId,
+      UserID: userId,
+      PONumber: billNumber,
+      Subtotal: subtotal,
+      DiscountAmount: discountAmount,
+      TaxAmount: taxAmount,
+      TotalAmount: totalAmount,
+      BranchName: data.branchName || null,
+      Notes: data.notes || null,
+      InvoiceNumber: invoiceNumber,
+      InvoiceDate: invoiceDate,
+      GRNNumber: 'GRN-' + billNumber,
+      GRNDate: invoiceDate
+    });
+
+    const poId = poResult.recordset[0].PurchaseOrderID;
+
+    // 2. Insert items and update stock
+    for (const item of data.items) {
+      const itemSubtotal = parseFloat(item.quantity) * parseFloat(item.unitCost);
+      await db.query(`
+        INSERT INTO dbo.PurchaseOrderItems (
+          PurchaseOrderID, ProductID, Quantity, ReceivedQty, UnitCost, Subtotal, Discount, Tax,
+          BatchNo, MfgDate, ExpiryDate, WarehouseName
+        ) VALUES (
+          @PurchaseOrderID, @ProductID, @Quantity, @Quantity, @UnitCost, @Subtotal, @Discount, @Tax,
+          @BatchNo, @MfgDate, @ExpiryDate, @WarehouseName
+        )
+      `, {
+        PurchaseOrderID: poId,
+        ProductID: item.productId,
+        Quantity: parseFloat(item.quantity),
+        UnitCost: parseFloat(item.unitCost),
+        Subtotal: itemSubtotal,
+        Discount: parseFloat(item.discount || 0),
+        Tax: parseFloat(item.tax || 0),
+        BatchNo: item.batchNo || null,
+        MfgDate: item.mfgDate || null,
+        ExpiryDate: item.expiryDate || null,
+        WarehouseName: item.warehouseName || null
+      });
+
+      // Update Stock counts in Products
+      await db.query(`
+        UPDATE dbo.Products
+        SET Stock = Stock + @Qty
+        WHERE ProductID = @ProductID AND CompanyID = @CompanyID
+      `, {
+        Qty: parseFloat(item.quantity),
+        ProductID: item.productId,
+        CompanyID: companyId
+      });
+
+      // Update product batches if applicable
+      const productResult = await db.query(`
+        SELECT IsBatchTracked FROM dbo.Products WHERE ProductID = @ProductID
+      `, { ProductID: item.productId });
+
+      if (productResult.recordset[0]?.IsBatchTracked && item.batchNo && item.expiryDate) {
+        const existingBatch = await db.query(`
+          SELECT BatchID FROM dbo.ProductBatches
+          WHERE BatchNo = @BatchNo AND ProductID = @ProductID AND CompanyID = @CompanyID
+        `, { BatchNo: item.batchNo, ProductID: item.productId, CompanyID: companyId });
+
+        if (existingBatch.recordset.length > 0) {
+          await db.query(`
+            UPDATE dbo.ProductBatches
+            SET CurrentQty = CurrentQty + @Qty
+            WHERE BatchID = @BatchID
+          `, { Qty: parseFloat(item.quantity), BatchID: existingBatch.recordset[0].BatchID });
+        } else {
+          await db.query(`
+            INSERT INTO dbo.ProductBatches (
+              ProductID, CompanyID, BatchNo, MfgDate, ExpiryDate, 
+              InitialQty, CurrentQty, WarehouseName
+            ) VALUES (
+              @ProductID, @CompanyID, @BatchNo, @MfgDate, @ExpiryDate, 
+              @Qty, @Qty, @WarehouseName
+            )
+          `, {
+            ProductID: item.productId,
+            CompanyID: companyId,
+            BatchNo: item.batchNo,
+            MfgDate: item.mfgDate || null,
+            ExpiryDate: item.expiryDate,
+            Qty: parseFloat(item.quantity),
+            WarehouseName: item.warehouseName || null
+          });
+        }
+      }
+    }
+
+    // 3. Post offsetting entries to SupplierLedger for audit transparency
+    const latestBalanceResult = await db.query(`
+      SELECT CurrentBalance FROM dbo.Suppliers WHERE SupplierID = @SupplierID
+    `, { SupplierID: data.supplierId });
+    const runningBalance = parseFloat(latestBalanceResult.recordset[0]?.CurrentBalance || 0);
+
+    // First, Credit (Purchase Invoice)
+    await db.query(`
+      INSERT INTO dbo.SupplierLedger (
+        CompanyID, SupplierID, TransactionType, ReferenceType, ReferenceNumber, 
+        Amount, RunningBalance, Description, BranchName
+      ) VALUES (
+        @CompanyID, @SupplierID, 'Credit', 'Purchase Invoice', @InvoiceNumber, 
+        @Amount, @RunningBalance, @Description, @BranchName
+      )
+    `, {
+      CompanyID: companyId,
+      SupplierID: data.supplierId,
+      InvoiceNumber: invoiceNumber,
+      Amount: totalAmount,
+      RunningBalance: runningBalance,
+      Description: `Direct Cash Purchase Bill ${billNumber}`,
+      BranchName: data.branchName || null
+    });
+
+    // Then, Debit (Payment Made)
+    await db.query(`
+      INSERT INTO dbo.SupplierLedger (
+        CompanyID, SupplierID, TransactionType, ReferenceType, ReferenceNumber, 
+        Amount, RunningBalance, Description, BranchName
+      ) VALUES (
+        @CompanyID, @SupplierID, 'Debit', 'Payment Made', @InvoiceNumber, 
+        @Amount, @RunningBalance, @Description, @BranchName
+      )
+    `, {
+      CompanyID: companyId,
+      SupplierID: data.supplierId,
+      InvoiceNumber: invoiceNumber,
+      Amount: totalAmount,
+      RunningBalance: runningBalance,
+      Description: `Direct cash purchase payment settlement`,
+      BranchName: data.branchName || null
+    });
+
+    return poResult.recordset[0];
+  }
+
+  async createDirectCreditPurchase(companyId, userId, data) {
+    const prefix = 'BILL-' + new Date().getFullYear();
+    const result = await db.query(`
+      SELECT TOP 1 PONumber 
+      FROM dbo.PurchaseOrders 
+      WHERE CompanyID = @CompanyID AND PONumber LIKE @Prefix + '%'
+      ORDER BY PONumber DESC
+    `, { CompanyID: companyId, Prefix: prefix });
+
+    let count = 1;
+    if (result.recordset.length > 0) {
+      const last = result.recordset[0].PONumber;
+      const numStr = last.replace(prefix + '-', '');
+      const num = parseInt(numStr, 10);
+      if (!isNaN(num)) {
+        count = num + 1;
+      }
+    }
+    const billNumber = `${prefix}-${count.toString().padStart(4, '0')}`;
+    
+    // Calculate totals
+    const subtotal = data.items.reduce((sum, item) => sum + (parseFloat(item.quantity) * parseFloat(item.unitCost)), 0);
+    const itemDiscounts = data.items.reduce((sum, item) => sum + parseFloat(item.discount || 0), 0);
+    const itemTaxes = data.items.reduce((sum, item) => sum + parseFloat(item.tax || 0), 0);
+    
+    const discountAmount = parseFloat(data.discountAmount || itemDiscounts || 0);
+    const taxAmount = parseFloat(data.taxAmount || itemTaxes || 0);
+    const totalAmount = subtotal - discountAmount + taxAmount;
+
+    const paidAmount = parseFloat(data.paidAmount || 0);
+    const balanceDue = totalAmount - paidAmount;
+
+    let paymentStatus = 'Unpaid';
+    if (paidAmount >= totalAmount) {
+      paymentStatus = 'Paid';
+    } else if (paidAmount > 0) {
+      paymentStatus = 'Partially Paid';
+    }
+
+    const invoiceNumber = data.invoiceNumber || 'INV-' + Date.now().toString().slice(-8);
+    const invoiceDate = data.invoiceDate ? new Date(data.invoiceDate) : new Date();
+    const dueDate = data.dueDate ? new Date(data.dueDate) : null;
+
+    // 1. Insert header into PurchaseOrders
+    const poResult = await db.query(`
+      INSERT INTO dbo.PurchaseOrders (
+        CompanyID, SupplierID, UserID, PONumber, Subtotal, DiscountAmount, TaxAmount, 
+        TotalAmount, Status, PurchaseType, PaymentStatus, AmountPaid, BranchName, Notes, 
+        InvoiceNumber, InvoiceDate, DueDate, GRNNumber, GRNDate
+      )
+      OUTPUT inserted.PurchaseOrderID, inserted.PONumber, inserted.TotalAmount, inserted.Status, inserted.PurchaseType
+      VALUES (
+        @CompanyID, @SupplierID, @UserID, @PONumber, @Subtotal, @DiscountAmount, @TaxAmount, 
+        @TotalAmount, 'Invoiced', 'Credit', @PaymentStatus, @AmountPaid, @BranchName, @Notes,
+        @InvoiceNumber, @InvoiceDate, @DueDate, @GRNNumber, @GRNDate
+      )
+    `, {
+      CompanyID: companyId,
+      SupplierID: data.supplierId,
+      UserID: userId,
+      PONumber: billNumber,
+      Subtotal: subtotal,
+      DiscountAmount: discountAmount,
+      TaxAmount: taxAmount,
+      TotalAmount: totalAmount,
+      PaymentStatus: paymentStatus,
+      AmountPaid: paidAmount,
+      BranchName: data.branchName || null,
+      Notes: data.notes || null,
+      InvoiceNumber: invoiceNumber,
+      InvoiceDate: invoiceDate,
+      DueDate: dueDate,
+      GRNNumber: 'GRN-' + billNumber,
+      GRNDate: invoiceDate
+    });
+
+    const poId = poResult.recordset[0].PurchaseOrderID;
+
+    // 2. Insert items and update stock
+    for (const item of data.items) {
+      const itemSubtotal = parseFloat(item.quantity) * parseFloat(item.unitCost);
+      await db.query(`
+        INSERT INTO dbo.PurchaseOrderItems (
+          PurchaseOrderID, ProductID, Quantity, ReceivedQty, UnitCost, Subtotal, Discount, Tax,
+          BatchNo, MfgDate, ExpiryDate, WarehouseName
+        ) VALUES (
+          @PurchaseOrderID, @ProductID, @Quantity, @Quantity, @UnitCost, @Subtotal, @Discount, @Tax,
+          @BatchNo, @MfgDate, @ExpiryDate, @WarehouseName
+        )
+      `, {
+        PurchaseOrderID: poId,
+        ProductID: item.productId,
+        Quantity: parseFloat(item.quantity),
+        UnitCost: parseFloat(item.unitCost),
+        Subtotal: itemSubtotal,
+        Discount: parseFloat(item.discount || 0),
+        Tax: parseFloat(item.tax || 0),
+        BatchNo: item.batchNo || null,
+        MfgDate: item.mfgDate || null,
+        ExpiryDate: item.expiryDate || null,
+        WarehouseName: item.warehouseName || null
+      });
+
+      // Update Stock counts in Products
+      await db.query(`
+        UPDATE dbo.Products
+        SET Stock = Stock + @Qty
+        WHERE ProductID = @ProductID AND CompanyID = @CompanyID
+      `, {
+        Qty: parseFloat(item.quantity),
+        ProductID: item.productId,
+        CompanyID: companyId
+      });
+
+      // Update product batches if applicable
+      const productResult = await db.query(`
+        SELECT IsBatchTracked FROM dbo.Products WHERE ProductID = @ProductID
+      `, { ProductID: item.productId });
+
+      if (productResult.recordset[0]?.IsBatchTracked && item.batchNo && item.expiryDate) {
+        const existingBatch = await db.query(`
+          SELECT BatchID FROM dbo.ProductBatches
+          WHERE BatchNo = @BatchNo AND ProductID = @ProductID AND CompanyID = @CompanyID
+        `, { BatchNo: item.batchNo, ProductID: item.productId, CompanyID: companyId });
+
+        if (existingBatch.recordset.length > 0) {
+          await db.query(`
+            UPDATE dbo.ProductBatches
+            SET CurrentQty = CurrentQty + @Qty
+            WHERE BatchID = @BatchID
+          `, { Qty: parseFloat(item.quantity), BatchID: existingBatch.recordset[0].BatchID });
+        } else {
+          await db.query(`
+            INSERT INTO dbo.ProductBatches (
+              ProductID, CompanyID, BatchNo, MfgDate, ExpiryDate, 
+              InitialQty, CurrentQty, WarehouseName
+            ) VALUES (
+              @ProductID, @CompanyID, @BatchNo, @MfgDate, @ExpiryDate, 
+              @Qty, @Qty, @WarehouseName
+            )
+          `, {
+            ProductID: item.productId,
+            CompanyID: companyId,
+            BatchNo: item.batchNo,
+            MfgDate: item.mfgDate || null,
+            ExpiryDate: item.expiryDate,
+            Qty: parseFloat(item.quantity),
+            WarehouseName: item.warehouseName || null
+          });
+        }
+      }
+    }
+
+    // 3. Increment supplier outstanding balance by the unpaid net amount
+    const netBalanceIncrease = totalAmount - paidAmount;
+    await db.query(`
+      UPDATE dbo.Suppliers
+      SET CurrentBalance = CurrentBalance + @Amount
+      WHERE SupplierID = @SupplierID AND CompanyID = @CompanyID
+    `, { Amount: netBalanceIncrease, SupplierID: data.supplierId, CompanyID: companyId });
+
+    // 4. Ledger Entries:
+    let latestBalanceResult = await db.query(`
+      SELECT CurrentBalance FROM dbo.Suppliers WHERE SupplierID = @SupplierID
+    `, { SupplierID: data.supplierId });
+    let runningBalance = parseFloat(latestBalanceResult.recordset[0]?.CurrentBalance || 0);
+    const balanceAfterInvoice = runningBalance + paidAmount;
+
+    await db.query(`
+      INSERT INTO dbo.SupplierLedger (
+        CompanyID, SupplierID, TransactionType, ReferenceType, ReferenceNumber, 
+        Amount, RunningBalance, Description, BranchName
+      ) VALUES (
+        @CompanyID, @SupplierID, 'Credit', 'Purchase Invoice', @InvoiceNumber, 
+        @Amount, @RunningBalanceAfterInvoice, @Description, @BranchName
+      )
+    `, {
+      CompanyID: companyId,
+      SupplierID: data.supplierId,
+      InvoiceNumber: invoiceNumber,
+      Amount: totalAmount,
+      RunningBalanceAfterInvoice: balanceAfterInvoice,
+      Description: `Direct Credit Purchase Bill ${billNumber}`,
+      BranchName: data.branchName || null
+    });
+
+    // If immediate payment was made, log the Debit entry
+    if (paidAmount > 0) {
+      const paymentNumber = 'PV-' + Date.now().toString().slice(-8);
+
+      await db.query(`
+        INSERT INTO dbo.SupplierPayments (
+          CompanyID, SupplierID, UserID, PaymentNumber, PaymentDate, 
+          Amount, PaymentMethod, ReferenceNumber, Notes, BranchName
+        ) VALUES (
+          @CompanyID, @SupplierID, @UserID, @PaymentNumber, @PaymentDate, 
+          @Amount, @PaymentMethod, @ReferenceNumber, @Notes, @BranchName
+        )
+      `, {
+        CompanyID: companyId,
+        SupplierID: data.supplierId,
+        UserID: userId,
+        PaymentNumber: paymentNumber,
+        PaymentDate: invoiceDate,
+        Amount: paidAmount,
+        PaymentMethod: data.paymentMethod || 'Cash',
+        ReferenceNumber: data.paymentReference || null,
+        Notes: `Immediate payment against direct bill ${billNumber}`,
+        BranchName: data.branchName || null
+      });
+
+      await db.query(`
+        INSERT INTO dbo.SupplierLedger (
+          CompanyID, SupplierID, TransactionType, ReferenceType, ReferenceNumber, 
+          Amount, RunningBalance, Description, BranchName
+        ) VALUES (
+          @CompanyID, @SupplierID, 'Debit', 'Payment Made', @PaymentNumber, 
+          @Amount, @RunningBalance, @Description, @BranchName
+        )
+      `, {
+        CompanyID: companyId,
+        SupplierID: data.supplierId,
+        PaymentNumber: paymentNumber,
+        Amount: paidAmount,
+        RunningBalance: runningBalance,
+        Description: `Immediate payment settlement for direct bill ${billNumber}`,
+        BranchName: data.branchName || null
       });
     }
 
@@ -694,15 +1113,16 @@ class SupplierRepository {
     const returnNumber = 'RET-' + Date.now().toString().slice(-8);
     const returnDate = new Date();
     const totalAmount = data.items.reduce((sum, item) => sum + (parseFloat(item.quantity) * parseFloat(item.unitCost)), 0);
+    const returnType = data.returnType || 'Credit';
 
     // 1. Insert return header
     const returnResult = await db.query(`
       INSERT INTO dbo.SupplierReturns (
-        CompanyID, SupplierID, UserID, ReturnNumber, ReturnDate, TotalAmount, Reason, BranchName
+        CompanyID, SupplierID, UserID, ReturnNumber, ReturnDate, TotalAmount, Reason, BranchName, ReturnType
       )
-      OUTPUT inserted.ReturnID, inserted.ReturnNumber
+      OUTPUT inserted.ReturnID, inserted.ReturnNumber, inserted.ReturnType
       VALUES (
-        @CompanyID, @SupplierID, @UserID, @ReturnNumber, @ReturnDate, @TotalAmount, @Reason, @BranchName
+        @CompanyID, @SupplierID, @UserID, @ReturnNumber, @ReturnDate, @TotalAmount, @Reason, @BranchName, @ReturnType
       )
     `, {
       CompanyID: companyId,
@@ -712,7 +1132,8 @@ class SupplierRepository {
       ReturnDate: returnDate,
       TotalAmount: totalAmount,
       Reason: data.reason || null,
-      BranchName: data.branchName || null
+      BranchName: data.branchName || null,
+      ReturnType: returnType
     });
 
     const returnId = returnResult.recordset[0].ReturnID;
@@ -752,7 +1173,7 @@ class SupplierRepository {
       }
     }
 
-    // 3. Subtract from outstanding balance in Suppliers
+    // 3. Subtract from outstanding balance in Suppliers (for both Cash and Credit returns)
     await db.query(`
       UPDATE dbo.Suppliers
       SET CurrentBalance = CurrentBalance - @Amount
@@ -763,7 +1184,7 @@ class SupplierRepository {
     const latestBalanceResult = await db.query(`
       SELECT CurrentBalance FROM dbo.Suppliers WHERE SupplierID = @SupplierID
     `, { SupplierID: data.supplierId });
-    const runningBalance = parseFloat(latestBalanceResult.recordset[0].CurrentBalance);
+    const runningBalance = parseFloat(latestBalanceResult.recordset[0]?.CurrentBalance || 0);
 
     await db.query(`
       INSERT INTO dbo.SupplierLedger (
@@ -779,7 +1200,7 @@ class SupplierRepository {
       ReturnNumber: returnNumber,
       Amount: totalAmount,
       RunningBalance: runningBalance,
-      Description: data.reason || `Stock returned to supplier due to damage/expiry`,
+      Description: data.reason || `Stock returned to supplier (${returnType} return)`,
       BranchName: data.branchName || null
     });
 
@@ -868,29 +1289,35 @@ class SupplierRepository {
       }
     }
 
+    // Revert old return's outstanding balance adjustment
+    await db.query(`
+      UPDATE dbo.Suppliers SET CurrentBalance = CurrentBalance + @Amount WHERE SupplierID = @SupplierID AND CompanyID = @CompanyID
+    `, { Amount: parseFloat(oldRet.TotalAmount), SupplierID: oldRet.SupplierID, CompanyID: companyId });
+
     // Delete old ledger entries & items
     await db.query(`DELETE FROM dbo.SupplierLedger WHERE CompanyID = @CompanyID AND ReferenceType = 'Supplier Return' AND ReferenceNumber = @ReturnNumber`, { CompanyID: companyId, ReturnNumber: oldRet.ReturnNumber });
     await db.query(`DELETE FROM dbo.SupplierReturnItems WHERE ReturnID = @ReturnID`, { ReturnID: returnId });
 
     // 2. Insert new details and apply stock & balance updates
     const totalAmount = data.items.reduce((sum, item) => sum + (parseFloat(item.quantity) * parseFloat(item.unitCost)), 0);
-    const balanceDiff = totalAmount - parseFloat(oldRet.TotalAmount); // New Amount - Old Amount
+    const returnType = data.returnType || 'Credit';
 
-    // Update Suppliers balance
+    // Apply new return's outstanding balance adjustment
     await db.query(`
-      UPDATE dbo.Suppliers SET CurrentBalance = CurrentBalance - @BalanceDiff WHERE SupplierID = @SupplierID AND CompanyID = @CompanyID
-    `, { BalanceDiff: balanceDiff, SupplierID: data.supplierId, CompanyID: companyId });
+      UPDATE dbo.Suppliers SET CurrentBalance = CurrentBalance - @Amount WHERE SupplierID = @SupplierID AND CompanyID = @CompanyID
+    `, { Amount: totalAmount, SupplierID: data.supplierId, CompanyID: companyId });
 
-    // Update Return header
+    // Update Return header (including ReturnType)
     await db.query(`
       UPDATE dbo.SupplierReturns
-      SET SupplierID = @SupplierID, TotalAmount = @TotalAmount, Reason = @Reason, BranchName = @BranchName
+      SET SupplierID = @SupplierID, TotalAmount = @TotalAmount, Reason = @Reason, BranchName = @BranchName, ReturnType = @ReturnType
       WHERE ReturnID = @ReturnID AND CompanyID = @CompanyID
     `, {
       SupplierID: data.supplierId,
       TotalAmount: totalAmount,
       Reason: data.reason || null,
       BranchName: data.branchName || null,
+      ReturnType: returnType,
       ReturnID: returnId,
       CompanyID: companyId
     });
@@ -923,7 +1350,7 @@ class SupplierRepository {
 
     // Log Debit entry in Ledger
     const latestBalanceResult = await db.query(`SELECT CurrentBalance FROM dbo.Suppliers WHERE SupplierID = @SupplierID`, { SupplierID: data.supplierId });
-    const runningBalance = parseFloat(latestBalanceResult.recordset[0].CurrentBalance);
+    const runningBalance = parseFloat(latestBalanceResult.recordset[0]?.CurrentBalance || 0);
 
     await db.query(`
       INSERT INTO dbo.SupplierLedger (
@@ -939,7 +1366,7 @@ class SupplierRepository {
       ReturnNumber: oldRet.ReturnNumber,
       Amount: totalAmount,
       RunningBalance: runningBalance,
-      Description: data.reason || `Updated stock returned to supplier`,
+      Description: data.reason || `Updated stock returned to supplier (${returnType} return)`,
       BranchName: data.branchName || null
     });
 
