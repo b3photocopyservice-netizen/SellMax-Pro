@@ -1,0 +1,297 @@
+const supplierRepository = require('../repositories/supplierRepository');
+const db = require('../config/db');
+
+class SupplierService {
+  async getSupplierProfile(supplierId, companyId) {
+    return await supplierRepository.getSupplierById(supplierId, companyId);
+  }
+
+  async getAllSuppliers(companyId, filters) {
+    return await supplierRepository.getAllSuppliers(companyId, filters);
+  }
+
+  async createSupplierProfile(companyId, userId, data) {
+    if (!data.supplierName || !data.supplierName.trim()) {
+      throw new Error('Supplier Name is a required field.');
+    }
+    const supplier = await supplierRepository.createSupplier(companyId, data);
+    
+    // Log audit log
+    await supplierRepository.createAuditLog(
+      companyId, 
+      userId, 
+      'Supplier Created', 
+      `Supplier profile for ${supplier.SupplierName} (${supplier.SupplierCode}) has been successfully created.`
+    );
+    
+    return supplier;
+  }
+
+  async updateSupplierProfile(supplierId, companyId, userId, data) {
+    if (!data.supplierName || !data.supplierName.trim()) {
+      throw new Error('Supplier Name is a required field.');
+    }
+    const supplier = await supplierRepository.updateSupplier(supplierId, companyId, data);
+    
+    // Log audit log
+    await supplierRepository.createAuditLog(
+      companyId, 
+      userId, 
+      'Supplier Updated', 
+      `Supplier profile for ${supplier.SupplierName} (${supplier.SupplierCode}) has been updated.`
+    );
+
+    // Check Credit Limit Warning
+    await this.checkCreditLimitThreshold(companyId, supplier);
+    
+    return supplier;
+  }
+
+  async deleteSupplierProfile(supplierId, companyId, userId) {
+    const supplier = await supplierRepository.getSupplierById(supplierId, companyId);
+    if (!supplier) throw new Error('Supplier not found.');
+
+    const result = await supplierRepository.deleteSupplier(supplierId, companyId);
+    if (result === 'HAS_TRANSACTIONS') {
+      throw new Error('Cannot delete supplier because they have associated purchase orders, payments, or returns. Please set their status to Inactive instead.');
+    }
+    
+    if (result === 'DELETED') {
+      await supplierRepository.createAuditLog(
+        companyId, 
+        userId, 
+        'Supplier Deleted', 
+        `Supplier profile for ${supplier.SupplierName} (${supplier.SupplierCode}) was removed from the database.`
+      );
+      return true;
+    }
+    return false;
+  }
+
+  // --- ACTIONS ---
+
+  async createPO(companyId, userId, data) {
+    if (!data.supplierId) throw new Error('Supplier selection is required.');
+    if (!data.items || data.items.length === 0) throw new Error('Purchase order must contain at least 1 item.');
+
+    const supplier = await supplierRepository.getSupplierById(data.supplierId, companyId);
+    if (!supplier) throw new Error('Selected supplier does not exist.');
+
+    const po = await supplierRepository.createPurchaseOrder(companyId, userId, data);
+
+    // Raise Alert
+    await db.query(`
+      INSERT INTO dbo.SystemNotifications (CompanyID, Type, Message)
+      VALUES (@CompanyID, 'SupplierPO', @Message)
+    `, {
+      CompanyID: companyId,
+      Message: `New Purchase Order ${po.PONumber} generated for supplier ${supplier.SupplierName}.`
+    });
+
+    // Log Audit
+    await supplierRepository.createAuditLog(
+      companyId, 
+      userId, 
+      'PO Generated', 
+      `Purchase Order ${po.PONumber} raised for ${supplier.SupplierName}. Total amount: Rs. ${po.TotalAmount}`
+    );
+
+    return po;
+  }
+
+  async updatePO(purchaseOrderId, companyId, userId, data) {
+    if (!data.supplierId) throw new Error('Supplier selection is required.');
+    if (!data.items || data.items.length === 0) throw new Error('Purchase order must contain at least 1 item.');
+    const updated = await supplierRepository.updatePurchaseOrder(purchaseOrderId, companyId, data);
+    await supplierRepository.createAuditLog(companyId, userId, 'PO Updated',
+      `Purchase Order ${updated.PONumber} updated by user.`);
+    return updated;
+  }
+
+  async deletePO(purchaseOrderId, companyId, userId) {
+    const po = await supplierRepository.getPurchaseOrderById(purchaseOrderId, companyId);
+    if (!po) throw new Error('Purchase Order not found.');
+    await supplierRepository.deletePurchaseOrder(purchaseOrderId, companyId);
+    await supplierRepository.createAuditLog(companyId, userId, 'PO Deleted',
+      `Purchase Order ${po.PONumber} deleted by user.`);
+    return true;
+  }
+
+  async receivePOStock(purchaseOrderId, companyId, userId, data) {
+    if (!data.items || data.items.length === 0) throw new Error('GRN must contain received items.');
+
+    const po = await supplierRepository.getPurchaseOrderById(purchaseOrderId, companyId);
+    if (!po) throw new Error('Purchase Order not found.');
+
+    const result = await supplierRepository.receiveGRN(purchaseOrderId, companyId, data);
+
+    // Raise alert
+    await db.query(`
+      INSERT INTO dbo.SystemNotifications (CompanyID, Type, Message)
+      VALUES (@CompanyID, 'Expiry', @Message)
+    `, {
+      CompanyID: companyId,
+      Message: `Goods Received Note (${result.grnNumber}) approved. Stocks received against order ${po.PONumber}.`
+    });
+
+    // Log audit
+    await supplierRepository.createAuditLog(
+      companyId, 
+      userId, 
+      'GRN Received', 
+      `Approved Goods Received Note ${result.grnNumber} against Purchase Order ${po.PONumber}.`
+    );
+
+    return result;
+  }
+
+  async invoicePOBill(purchaseOrderId, companyId, userId, data) {
+    const po = await supplierRepository.getPurchaseOrderById(purchaseOrderId, companyId);
+    if (!po) throw new Error('Purchase Order not found.');
+
+    const result = await supplierRepository.invoicePurchaseOrder(purchaseOrderId, companyId, data);
+
+    // Fetch updated supplier details to review credit limit
+    const supplier = await supplierRepository.getSupplierById(po.SupplierID, companyId);
+
+    // Trigger credit warnings
+    await this.checkCreditLimitThreshold(companyId, supplier);
+
+    // Log audit
+    await supplierRepository.createAuditLog(
+      companyId, 
+      userId, 
+      'Invoice Finalized', 
+      `Purchase invoice ${result.invoiceNumber} recorded against order ${po.PONumber}. Supplier ledger credited by Rs. ${po.TotalAmount}.`
+    );
+
+    return result;
+  }
+
+  async makeSupplierSettlement(companyId, userId, data) {
+    if (!data.supplierId) throw new Error('Supplier selection is required.');
+    if (!data.amount || parseFloat(data.amount) <= 0) throw new Error('Payment amount must be greater than zero.');
+
+    const supplier = await supplierRepository.getSupplierById(data.supplierId, companyId);
+    if (!supplier) throw new Error('Supplier not found.');
+
+    const result = await supplierRepository.createSupplierPayment(companyId, userId, data);
+
+    // Log audit
+    await supplierRepository.createAuditLog(
+      companyId, 
+      userId, 
+      'Payment Logged', 
+      `Settlement payment of Rs. ${parseFloat(data.amount).toFixed(2)} made to ${supplier.SupplierName} via Voucher ${result.paymentNumber}.`
+    );
+
+    return result;
+  }
+
+  async makeSupplierReturn(companyId, userId, data) {
+    if (!data.supplierId) throw new Error('Supplier selection is required.');
+    if (!data.items || data.items.length === 0) throw new Error('Supplier returns must specify returned inventory items.');
+
+    const supplier = await supplierRepository.getSupplierById(data.supplierId, companyId);
+    if (!supplier) throw new Error('Supplier not found.');
+
+    const returnDoc = await supplierRepository.createSupplierReturn(companyId, userId, data);
+
+    // Log audit
+    await supplierRepository.createAuditLog(
+      companyId, 
+      userId, 
+      'Supplier Return', 
+      `Supplier return ${returnDoc.ReturnNumber} processed for ${supplier.SupplierName}. Total debited: Rs. ${parseFloat(returnDoc.TotalAmount).toFixed(2)}.`
+    );
+
+    return returnDoc;
+  }
+
+  async getReturnsList(companyId, filters = {}) {
+    return await supplierRepository.getSupplierReturns(companyId, filters);
+  }
+
+  async getReturnDetail(returnId, companyId) {
+    const ret = await supplierRepository.getSupplierReturnById(returnId, companyId);
+    if (!ret) throw new Error('Supplier Return not found.');
+    return ret;
+  }
+
+  async updateReturn(returnId, companyId, userId, data) {
+    if (!data.supplierId) throw new Error('Supplier selection is required.');
+    if (!data.items || data.items.length === 0) throw new Error('Supplier return must contain items.');
+
+    const supplier = await supplierRepository.getSupplierById(data.supplierId, companyId);
+    if (!supplier) throw new Error('Supplier not found.');
+
+    const updated = await supplierRepository.updateSupplierReturn(returnId, companyId, userId, data);
+
+    await supplierRepository.createAuditLog(
+      companyId,
+      userId,
+      'Return Updated',
+      `Supplier return ${updated.ReturnNumber} has been updated for supplier ${supplier.SupplierName}. New Total: Rs. ${parseFloat(updated.TotalAmount).toFixed(2)}.`
+    );
+
+    return updated;
+  }
+
+  async deleteReturn(returnId, companyId, userId) {
+    const ret = await supplierRepository.getSupplierReturnById(returnId, companyId);
+    if (!ret) throw new Error('Supplier Return not found.');
+
+    await supplierRepository.deleteSupplierReturn(returnId, companyId);
+
+    await supplierRepository.createAuditLog(
+      companyId,
+      userId,
+      'Return Deleted',
+      `Supplier return ${ret.ReturnNumber} was deleted and stock/ledger mappings were reversed.`
+    );
+
+    return true;
+  }
+
+  // --- LEDGER STATS ---
+
+  async getLedgerTransactions(supplierId, companyId, filters) {
+    return await supplierRepository.getSupplierLedger(supplierId, companyId, filters);
+  }
+
+  async getWidgets(companyId) {
+    return await supplierRepository.getSupplierWidgets(companyId);
+  }
+
+  async getAuditTrail(companyId) {
+    return await supplierRepository.getAuditLogs(companyId);
+  }
+
+  // --- HELPERS ---
+
+  async checkCreditLimitThreshold(companyId, supplier) {
+    const limit = parseFloat(supplier.CreditLimit);
+    const balance = parseFloat(supplier.CurrentBalance);
+
+    if (limit > 0 && balance >= (limit * 0.9)) {
+      const pct = ((balance / limit) * 100).toFixed(0);
+      const message = `Alert: Supplier ${supplier.SupplierName} (${supplier.SupplierCode}) outstanding balance is Rs. ${balance.toFixed(2)}, reaching ${pct}% of credit limit (Rs. ${limit.toFixed(2)}).`;
+
+      // Check if duplicate alert raised recently (e.g. today)
+      const recent = await db.query(`
+        SELECT TOP 1 NotificationID 
+        FROM dbo.SystemNotifications
+        WHERE CompanyID = @CompanyID AND Message = @Msg AND IsRead = 0
+      `, { CompanyID: companyId, Msg: message });
+
+      if (recent.recordset.length === 0) {
+        await db.query(`
+          INSERT INTO dbo.SystemNotifications (CompanyID, Type, Message)
+          VALUES (@CompanyID, 'SupplierCredit', @Message)
+        `, { CompanyID: companyId, Message: message });
+      }
+    }
+  }
+}
+
+module.exports = new SupplierService();

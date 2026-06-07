@@ -1,0 +1,89 @@
+const express = require('express');
+const router = express.Router();
+const reportsService = require('../services/reportsService');
+const { authenticateToken, checkPermission } = require('../middlewares/auth');
+
+// GET /api/reports/daily-summary
+router.get('/daily-summary', authenticateToken, checkPermission('VIEW_REPORTS'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const { startDate, endDate } = req.query;
+    const summary = await reportsService.getDailySalesSummary(companyId, startDate, endDate);
+    res.json(summary);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/reports/product-performance
+router.get('/product-performance', authenticateToken, checkPermission('VIEW_REPORTS'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const { startDate, endDate, limit } = req.query;
+    const performance = await reportsService.getProductPerformance(companyId, startDate, endDate, limit);
+    res.json(performance);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/reports/low-stock
+router.get('/low-stock', authenticateToken, async (req, res, next) => {
+  try {
+    // Inventory officers, managers, and admins can view low stock warnings
+    if (!req.user || (
+      !req.user.permissions.includes('VIEW_REPORTS') && 
+      !req.user.permissions.includes('MANAGE_INVENTORY') &&
+      req.user.roleName !== 'Super Admin'
+    )) {
+      return res.status(403).json({ error: 'Permission Denied: Cannot view stock reports.' });
+    }
+
+    const companyId = req.user.companyId;
+    const alerts = await reportsService.getLowStockAlerts(companyId);
+    res.json(alerts);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/reports/customer-statement
+router.get('/customer-statement', authenticateToken, async (req, res, next) => {
+  try {
+    // Accountants, managers, and admins can view customer balance statements
+    if (!req.user || (
+      !req.user.permissions.includes('VIEW_REPORTS') && 
+      !req.user.permissions.includes('MANAGE_CUSTOMERS') &&
+      req.user.roleName !== 'Super Admin'
+    )) {
+      return res.status(403).json({ error: 'Permission Denied: Cannot view customer statements.' });
+    }
+
+    const companyId = req.user.companyId;
+    const statement = await reportsService.getCustomerLoyaltyStatement(companyId);
+    res.json(statement);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/reports/expiry
+router.get('/expiry', authenticateToken, async (req, res, next) => {
+  try {
+    if (!req.user || (
+      !req.user.permissions.includes('VIEW_REPORTS') && 
+      !req.user.permissions.includes('MANAGE_INVENTORY') &&
+      req.user.roleName !== 'Super Admin'
+    )) {
+      return res.status(403).json({ error: 'Permission Denied: Cannot view expiry reports.' });
+    }
+
+    const companyId = req.user.companyId;
+    const report = await reportsService.getExpiryReport(companyId);
+    res.json(report);
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = router;
