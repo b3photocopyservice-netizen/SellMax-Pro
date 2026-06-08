@@ -72,6 +72,17 @@ router.get('/returns', authenticateToken, checkPermission('VIEW_SUPPLIERS'), asy
   }
 });
 
+// GET /api/suppliers/company-profile
+router.get('/company-profile', authenticateToken, checkPermission('VIEW_SUPPLIERS'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const companyProfile = await require('../services/companyService').getCompanyProfile(companyId);
+    res.json(companyProfile);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/suppliers/:id
 router.get('/:id', authenticateToken, checkPermission('VIEW_SUPPLIERS'), async (req, res, next) => {
   try {
@@ -290,6 +301,17 @@ router.post('/adjustments', authenticateToken, checkPermission('VIEW_SUPPLIER_FI
     const userId = req.user.userId;
     const adjustment = await supplierService.makeLedgerAdjustment(companyId, userId, req.body);
     res.status(201).json(adjustment);
+  } catch (err) {
+    next(err);
+  }
+});
+// POST /api/suppliers/ledger/:supplierId/email
+router.post('/ledger/:supplierId/email', authenticateToken, checkPermission('VIEW_SUPPLIER_FINANCIALS'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const userId = req.user.userId;
+    const result = await supplierService.sendStatementEmail(companyId, userId, req.params.supplierId, req.body);
+    res.json(result);
   } catch (err) {
     next(err);
   }

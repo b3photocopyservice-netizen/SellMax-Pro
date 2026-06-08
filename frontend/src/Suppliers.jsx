@@ -157,7 +157,7 @@ export default function Suppliers({ setToast }) {
   });
 
   // 8. Reports Tab
-  const [selectedReportType, setSelectedReportType] = useState('payables'); // 'list', 'payables', 'ledger', 'history'
+  const [selectedReportType, setSelectedReportType] = useState('payables'); // 'list', 'payables', 'ledger', 'history', 'statement'
   const [reportSupplierId, setReportSupplierId] = useState('');
   const [reportBranch, setReportBranch] = useState('');
   const [reportStartDate, setReportStartDate] = useState('');
@@ -165,6 +165,10 @@ export default function Suppliers({ setToast }) {
   const [reportResult, setReportResult] = useState([]);
   const [reportOpeningBalance, setReportOpeningBalance] = useState(0);
   const [reportClosingBalance, setReportClosingBalance] = useState(0);
+  const [companyProfile, setCompanyProfile] = useState(null);
+  const [reportPeriodType, setReportPeriodType] = useState('monthly'); // 'monthly', 'custom'
+  const [reportMonthSelect, setReportMonthSelect] = useState('this-month'); // 'this-month', 'last-month', 'last-30', 'last-90'
+  const [printStatementData, setPrintStatementData] = useState(null);
 
   // 9. Purchase Manager Sub-tabs
   const [purchaseSubTab, setPurchaseSubTab] = useState('orders'); // 'orders', 'grninvoice', 'returns'
@@ -176,6 +180,19 @@ export default function Suppliers({ setToast }) {
   const canManagePurchases = hasPermission('MANAGE_PURCHASES');
   const canViewFinancials = hasPermission('VIEW_SUPPLIER_FINANCIALS');
 
+  const fetchCompanyProfile = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/suppliers/company-profile`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setCompanyProfile(await res.json());
+      }
+    } catch (err) {
+      console.error('Failed to load company profile:', err);
+    }
+  };
+
   // Load initial data
   useEffect(() => {
     if (canView) {
@@ -185,6 +202,7 @@ export default function Suppliers({ setToast }) {
       fetchWidgets();
       fetchAuditLogs();
       fetchPurchaseReturns();
+      fetchCompanyProfile();
     }
   }, [activeTab]);
 
@@ -1692,6 +1710,39 @@ export default function Suppliers({ setToast }) {
 
   // --- REPORTS POSTING & EXPORTS ---
 
+  const computePeriodDates = () => {
+    if (reportPeriodType === 'custom') {
+      return { start: reportStartDate, end: reportEndDate };
+    }
+    
+    const now = new Date();
+    let start = '';
+    let end = '';
+    
+    if (reportMonthSelect === 'this-month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      start = firstDay.toISOString().split('T')[0];
+      end = now.toISOString().split('T')[0];
+    } else if (reportMonthSelect === 'last-month') {
+      const firstDayPrev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastDayPrev = new Date(now.getFullYear(), now.getMonth(), 0);
+      start = firstDayPrev.toISOString().split('T')[0];
+      end = lastDayPrev.toISOString().split('T')[0];
+    } else if (reportMonthSelect === 'last-30') {
+      const past30 = new Date();
+      past30.setDate(now.getDate() - 30);
+      start = past30.toISOString().split('T')[0];
+      end = now.toISOString().split('T')[0];
+    } else if (reportMonthSelect === 'last-90') {
+      const past90 = new Date();
+      past90.setDate(now.getDate() - 90);
+      start = past90.toISOString().split('T')[0];
+      end = now.toISOString().split('T')[0];
+    }
+    
+    return { start, end };
+  };
+
   const handleGenerateReport = async () => {
     let url = `${API_URL}/api/suppliers`;
     if (selectedReportType === 'payables') {
@@ -1702,6 +1753,36 @@ export default function Suppliers({ setToast }) {
     
     if (selectedReportType === 'list') {
       setReportResult(suppliers);
+      return;
+    }
+
+    if (selectedReportType === 'statement') {
+      if (!reportSupplierId) {
+        setToast({ type: 'error', message: 'Please select a supplier to generate statement.' });
+        return;
+      }
+      try {
+        setLoading(true);
+        const { start, end } = computePeriodDates();
+        let ledgerUrl = `${API_URL}/api/suppliers/ledger/${reportSupplierId}?`;
+        if (start) ledgerUrl += `startDate=${start}&`;
+        if (end) ledgerUrl += `endDate=${end}&`;
+        if (reportBranch) ledgerUrl += `branchName=${reportBranch}`;
+
+        const res = await fetch(ledgerUrl, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setReportResult(data.transactions || []);
+          setReportOpeningBalance(data.openingBalance || 0);
+          setReportClosingBalance(data.closingBalance || 0);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
       return;
     }
 
@@ -1800,8 +1881,243 @@ export default function Suppliers({ setToast }) {
     setToast({ type: 'success', message: 'Report exported to CSV.' });
   };
 
+  const handleExportStatementExcel = () => {
+    if (selectedReportType !== 'statement' || reportResult.length === 0) {
+      setToast({ type: 'info', message: 'No statement records available to export.' });
+      return;
+    }
+
+    const supplier = suppliers.find(s => String(s.SupplierID) === String(reportSupplierId));
+    if (!supplier) return;
+
+    const { start, end } = computePeriodDates();
+    const periodStr = start && end ? `${start} to ${end}` : 'All-Time';
+    
+    let totalPurchases = 0;
+    let totalPayments = 0;
+    let totalReturns = 0;
+    reportResult.forEach(t => {
+      const amt = parseFloat(t.Amount || 0);
+      if (t.ReferenceType === 'Purchase Invoice') {
+        totalPurchases += amt;
+      } else if (t.ReferenceType === 'Payment Made') {
+        totalPayments += amt;
+      } else if (t.ReferenceType === 'Supplier Return') {
+        totalReturns += amt;
+      }
+    });
+
+    const companyName = companyProfile?.Name || companyProfile?.name || 'SellMax Pro';
+    const companyEmail = companyProfile?.Email || companyProfile?.email || '';
+    const companyPhone = companyProfile?.MobileNumber || companyProfile?.mobileNumber || companyProfile?.TelephoneNumber || companyProfile?.telephoneNumber || '';
+    const companyAddress = `${companyProfile?.AddressLine1 || companyProfile?.addressLine1 || ''}, ${companyProfile?.City || companyProfile?.city || ''}`;
+
+    let html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8"/>
+        <!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Statement</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+        <style>
+          body { font-family: Arial, sans-serif; }
+          .title { font-size: 18px; font-weight: bold; text-align: center; color: #1e3a8a; }
+          .label { font-weight: bold; background-color: #f3f4f6; }
+          .number { text-align: right; }
+          .border-table { border-collapse: collapse; width: 100%; }
+          .border-table th { background-color: #e5e7eb; border: 1px solid #d1d5db; font-weight: bold; padding: 6px; }
+          .border-table td { border: 1px solid #e5e7eb; padding: 6px; }
+          .summary-card { font-weight: bold; border: 2px solid #9ca3af; background-color: #f9fafb; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <tr>
+            <td colspan="6" class="title">${companyName} - ACCOUNT STATEMENT</td>
+          </tr>
+          <tr>
+            <td colspan="3"><strong>Company Details:</strong><br/>${companyAddress}<br/>Phone: ${companyPhone}<br/>Email: ${companyEmail}</td>
+            <td colspan="3" align="right"><strong>Statement Period:</strong> ${periodStr}<br/><strong>Date Issued:</strong> ${new Date().toLocaleDateString()}<br/><strong>Branch:</strong> ${reportBranch || 'All Branches'}</td>
+          </tr>
+          <tr><td colspan="6"></td></tr>
+          <tr>
+            <td colspan="3" class="label">Supplier Account Details</td>
+            <td colspan="3" class="label">Financial Terms</td>
+          </tr>
+          <tr>
+            <td colspan="3"><strong>Name:</strong> ${supplier.SupplierName}<br/><strong>Code:</strong> ${supplier.SupplierCode}<br/><strong>Email:</strong> ${supplier.EmailAddress || '--'}<br/><strong>Mobile:</strong> ${supplier.MobileNumber || '--'}</td>
+            <td colspan="3"><strong>Credit Limit:</strong> Rs. ${Number(supplier.CreditLimit).toFixed(2)}<br/><strong>Credit Period:</strong> ${supplier.CreditPeriodDays || 0} Days<br/><strong>Payment Terms:</strong> ${supplier.PaymentTerms || '--'}</td>
+          </tr>
+          <tr><td colspan="6"></td></tr>
+          <tr class="summary-card">
+            <td colspan="2" align="center">Opening Balance: Rs. ${Number(reportOpeningBalance).toFixed(2)}</td>
+            <td colspan="2" align="center">Closing Balance: Rs. ${Number(reportClosingBalance).toFixed(2)}</td>
+            <td colspan="2" align="center">Owed / Payable: Rs. ${Number(supplier.CurrentBalance).toFixed(2)}</td>
+          </tr>
+          <tr><td colspan="6"></td></tr>
+        </table>
+
+        <table class="border-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Document No</th>
+              <th>Description</th>
+              <th>Debit (Payments/Returns)</th>
+              <th>Credit (Purchases)</th>
+              <th>Running Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td colspan="5"><strong>Period Opening Balance</strong></td>
+              <td class="number"><strong>Rs. ${Number(reportOpeningBalance).toFixed(2)}</strong></td>
+            </tr>
+            ${reportResult.map(t => {
+              const { refNo } = getLedgerRowDetails(t);
+              const deb = t.TransactionType === 'Debit' ? Number(t.Amount).toFixed(2) : '--';
+              const cred = t.TransactionType === 'Credit' ? Number(t.Amount).toFixed(2) : '--';
+              const bal = Number(t.RunningBalance).toFixed(2);
+              return `
+                <tr>
+                  <td>${new Date(t.TransactionDate).toLocaleDateString()}</td>
+                  <td>${refNo}</td>
+                  <td>${t.Description || t.ReferenceType}</td>
+                  <td class="number">${deb}</td>
+                  <td class="number">${cred}</td>
+                  <td class="number">Rs. ${bal}</td>
+                </tr>
+              `;
+            }).join('')}
+            <tr>
+              <td colspan="5"><strong>Period Closing Balance</strong></td>
+              <td class="number"><strong>Rs. ${Number(reportClosingBalance).toFixed(2)}</strong></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <br/>
+        <table>
+          <tr>
+            <td colspan="4"></td>
+            <td class="label">Total Purchases (+):</td>
+            <td class="number">Rs. ${totalPurchases.toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td colspan="4"></td>
+            <td class="label">Total Payments (-):</td>
+            <td class="number">Rs. ${totalPayments.toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td colspan="4"></td>
+            <td class="label">Total Returns (-):</td>
+            <td class="number">Rs. ${totalReturns.toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td colspan="4"></td>
+            <td class="summary-card">Closing Balance:</td>
+            <td class="summary-card number">Rs. ${reportClosingBalance.toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td colspan="4"></td>
+            <td class="summary-card" style="color:red;">Outstanding Balance:</td>
+            <td class="summary-card number" style="color:red;">Rs. ${Number(supplier.CurrentBalance).toFixed(2)}</td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Supplier_Statement_${supplier.SupplierCode}_${PeriodStrClean(periodStr)}.xls`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setToast({ type: 'success', message: 'Supplier statement exported to Excel successfully.' });
+  };
+
+  const PeriodStrClean = (str) => {
+    return str.replace(/[^a-zA-Z0-9]/g, '_');
+  };
+
+  const handleEmailStatement = async () => {
+    if (selectedReportType !== 'statement' || reportResult.length === 0) {
+      setToast({ type: 'info', message: 'No statement records available to email.' });
+      return;
+    }
+
+    const supplier = suppliers.find(s => String(s.SupplierID) === String(reportSupplierId));
+    if (!supplier) return;
+
+    if (!supplier.EmailAddress) {
+      setToast({ type: 'error', message: `Supplier '${supplier.SupplierName}' does not have a registered email address.` });
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      const { start, end } = computePeriodDates();
+      const res = await fetch(`${API_URL}/api/suppliers/ledger/${reportSupplierId}/email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          startDate: start,
+          endDate: end,
+          branchName: reportBranch
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToast({ type: 'success', message: `Statement successfully emailed to ${supplier.EmailAddress} (Simulated).` });
+      } else {
+        setToast({ type: 'error', message: data.error || 'Failed to email statement.' });
+      }
+    } catch (err) {
+      setToast({ type: 'error', message: 'Connection failure when emailing statement.' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handlePrintReport = () => {
-    window.print();
+    if (selectedReportType === 'statement') {
+      const supplier = suppliers.find(s => String(s.SupplierID) === String(reportSupplierId));
+      const { start, end } = computePeriodDates();
+      let totalPurchases = 0;
+      let totalPayments = 0;
+      let totalReturns = 0;
+      reportResult.forEach(t => {
+        const amt = parseFloat(t.Amount || 0);
+        if (t.ReferenceType === 'Purchase Invoice') {
+          totalPurchases += amt;
+        } else if (t.ReferenceType === 'Payment Made') {
+          totalPayments += amt;
+        } else if (t.ReferenceType === 'Supplier Return') {
+          totalReturns += amt;
+        }
+      });
+      
+      setPrintStatementData({
+        supplier,
+        transactions: reportResult,
+        openingBalance: reportOpeningBalance,
+        closingBalance: reportClosingBalance,
+        totalPurchases,
+        totalPayments,
+        totalReturns,
+        period: start && end ? `${start} to ${end}` : 'All-Time'
+      });
+      
+      setTimeout(() => {
+        window.print();
+      }, 150);
+    } else {
+      window.print();
+    }
   };
 
   // Filter local directory suppliers
@@ -2502,15 +2818,16 @@ export default function Suppliers({ setToast }) {
                   <option value="list">Supplier Contact Directory</option>
                   <option value="payables">Outstanding Payables Statement</option>
                   <option value="ledger">Supplier Transaction Ledger</option>
+                  <option value="statement">Supplier Account Statement</option>
                   <option value="history">Purchase History Summary</option>
                 </select>
               </div>
 
-              {(selectedReportType === 'ledger' || selectedReportType === 'history') && (
+              {(selectedReportType === 'ledger' || selectedReportType === 'history' || selectedReportType === 'statement') && (
                 <div className="form-group">
-                  <label className="form-label">Supplier Context</label>
+                  <label className="form-label">Supplier Context {selectedReportType === 'statement' && <span style={{ color: 'var(--danger)' }}>*</span>}</label>
                   <select className="form-select" value={reportSupplierId} onChange={(e) => setReportSupplierId(e.target.value)}>
-                    <option value="">-- All Suppliers --</option>
+                    <option value="">{selectedReportType === 'statement' ? '-- Select Supplier --' : '-- All Suppliers --'}</option>
                     {suppliers.map(s => (
                       <option key={s.SupplierID} value={s.SupplierID}>{s.SupplierName}</option>
                     ))}
@@ -2528,131 +2845,377 @@ export default function Suppliers({ setToast }) {
                 </select>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Start Date</label>
-                <input type="date" className="form-input" value={reportStartDate} onChange={(e) => setReportStartDate(e.target.value)} />
-              </div>
+              {selectedReportType === 'statement' && (
+                <div className="form-group">
+                  <label className="form-label">Period Type</label>
+                  <select className="form-select" value={reportPeriodType} onChange={(e) => setReportPeriodType(e.target.value)}>
+                    <option value="monthly">Monthly Statement</option>
+                    <option value="custom">Custom Date Range</option>
+                  </select>
+                </div>
+              )}
 
-              <div className="form-group">
-                <label className="form-label">End Date</label>
-                <input type="date" className="form-input" value={reportEndDate} onChange={(e) => setReportEndDate(e.target.value)} />
-              </div>
+              {selectedReportType === 'statement' && reportPeriodType === 'monthly' && (
+                <div className="form-group">
+                  <label className="form-label">Statement Month</label>
+                  <select className="form-select" value={reportMonthSelect} onChange={(e) => setReportMonthSelect(e.target.value)}>
+                    <option value="this-month">This Month</option>
+                    <option value="last-month">Last Month</option>
+                    <option value="last-30">Last 30 Days</option>
+                    <option value="last-90">Last 90 Days</option>
+                  </select>
+                </div>
+              )}
+
+              {(selectedReportType !== 'statement' || reportPeriodType === 'custom') && (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Start Date</label>
+                    <input type="date" className="form-input" value={reportStartDate} onChange={(e) => setReportStartDate(e.target.value)} />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">End Date</label>
+                    <input type="date" className="form-input" value={reportEndDate} onChange={(e) => setReportEndDate(e.target.value)} />
+                  </div>
+                </>
+              )}
 
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '20px', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
-              <button className="btn btn-secondary" onClick={handleExportCSV} disabled={reportResult.length === 0}>
-                <Download size={14} /> Export CSV
-              </button>
-              <button className="btn btn-secondary" onClick={handlePrintReport} disabled={reportResult.length === 0}>
-                <Printer size={14} /> Print Statement
-              </button>
-              <button className="btn btn-primary" onClick={handleGenerateReport}>
-                Generate Statement
-              </button>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '20px', borderTop: '1px solid var(--border-color)', paddingTop: '16px', flexWrap: 'wrap' }}>
+              {selectedReportType === 'statement' ? (
+                <>
+                  <button className="btn btn-secondary" onClick={handleExportStatementExcel} disabled={reportResult.length === 0 || actionLoading}>
+                    <Download size={14} style={{ marginRight: '6px' }} /> Export Excel
+                  </button>
+                  <button className="btn btn-secondary" onClick={handlePrintReport} disabled={reportResult.length === 0 || actionLoading}>
+                    <Printer size={14} style={{ marginRight: '6px' }} /> Export PDF / Print
+                  </button>
+                  <button className="btn btn-secondary" onClick={handleEmailStatement} disabled={reportResult.length === 0 || actionLoading} style={{ color: '#38bdf8', background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)' }}>
+                    ✉ Email Statement
+                  </button>
+                  <button className="btn btn-primary" onClick={handleGenerateReport} disabled={actionLoading}>
+                    {actionLoading ? 'Loading...' : 'Generate Statement'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="btn btn-secondary" onClick={handleExportCSV} disabled={reportResult.length === 0}>
+                    <Download size={14} /> Export CSV
+                  </button>
+                  <button className="btn btn-secondary" onClick={handlePrintReport} disabled={reportResult.length === 0}>
+                    <Printer size={14} /> Print Statement
+                  </button>
+                  <button className="btn btn-primary" onClick={handleGenerateReport}>
+                    Generate Statement
+                  </button>
+                </>
+              )}
             </div>
 
           </div>
 
           {/* Report Data preview grid */}
           {reportResult.length > 0 && (
-            <div className="glass-panel" style={{ padding: 0 }}>
-              <div className="table-container">
-                <table className="table-glass">
-                  <thead>
-                    {selectedReportType === 'list' || selectedReportType === 'payables' ? (
-                      <tr>
-                        <th>Code</th>
-                        <th>Supplier</th>
-                        <th>Contact Email</th>
-                        <th>Phone</th>
-                        <th>Credit Limit</th>
-                        <th>Outstanding Payables</th>
-                        <th>Category</th>
-                      </tr>
-                    ) : selectedReportType === 'ledger' ? (
-                      <tr>
-                        <th>Date</th>
-                        <th>Reference No</th>
-                        <th>Invoice No</th>
-                        <th>Transaction Type</th>
-                        <th style={{ textAlign: 'right' }}>Debit</th>
-                        <th style={{ textAlign: 'right' }}>Credit</th>
-                        <th style={{ textAlign: 'right' }}>Balance</th>
-                      </tr>
+            selectedReportType === 'statement' ? (
+              <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px', background: 'rgba(30, 41, 59, 0.45)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                {/* Header Section */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '20px' }}>
+                  <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                    {companyProfile?.LogoURL ? (
+                      <img src={companyProfile.LogoURL} alt="Logo" style={{ maxHeight: '50px', borderRadius: '4px' }} />
                     ) : (
-                      <tr>
-                        <th>PO Number</th>
-                        <th>Supplier</th>
-                        <th>Date</th>
-                        <th>Amount</th>
-                        <th>PO Status</th>
-                        <th>Invoice No</th>
-                        <th>Payment</th>
-                      </tr>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '50px', height: '50px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '20px', fontWeight: 'bold', color: 'var(--primary)' }}>
+                        {companyProfile?.Name ? companyProfile.Name.charAt(0) : 'S'}
+                      </div>
                     )}
-                  </thead>
-                  <tbody>
-                    {selectedReportType === 'list' || selectedReportType === 'payables' ? (
-                      reportResult.map(r => (
-                        <tr key={r.SupplierID}>
-                          <td className="mono" style={{ fontWeight: '700' }}>{r.SupplierCode}</td>
-                          <td style={{ fontWeight: '600' }}>{r.SupplierName}</td>
-                          <td>{r.EmailAddress || '--'}</td>
-                          <td>{r.MobileNumber || '--'}</td>
-                          <td className="mono">Rs. {Number(r.CreditLimit).toFixed(2)}</td>
-                          <td className="mono" style={{ fontWeight: '700', color: parseFloat(r.CurrentBalance) > 0 ? 'var(--warning)' : 'inherit' }}>
-                            Rs. {Number(r.CurrentBalance).toFixed(2)}
-                          </td>
-                          <td>{r.SupplierCategory}</td>
+                    <div>
+                      <h3 style={{ fontSize: '18px', fontWeight: '700', margin: 0, color: 'var(--text-primary)' }}>{companyProfile?.Name || companyProfile?.name || 'SellMax Pro'}</h3>
+                      <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0 0', lineHeight: '1.4' }}>
+                        {companyProfile?.AddressLine1 || companyProfile?.addressLine1 || ''} {companyProfile?.City || companyProfile?.city || ''}<br />
+                        Phone: {companyProfile?.MobileNumber || companyProfile?.mobileNumber || companyProfile?.TelephoneNumber || companyProfile?.telephoneNumber || '--'} | Email: {companyProfile?.Email || companyProfile?.email || '--'}<br />
+                        VAT: {companyProfile?.TaxRegNo || companyProfile?.taxRegNo || '--'}
+                      </p>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ background: 'var(--primary-light)', color: 'var(--primary)', padding: '4px 12px', borderRadius: '9999px', fontSize: '11px', fontWeight: '700', display: 'inline-block', marginBottom: '8px' }}>
+                      ACCOUNT STATEMENT
+                    </div>
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: 0, lineHeight: '1.4' }}>
+                      <strong>Period:</strong> {computePeriodDates().start || 'All-time'} to {computePeriodDates().end || 'All-time'}<br />
+                      <strong>Branch:</strong> {reportBranch || 'All Branches'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Supplier & Financial Terms Block */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                  <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', background: 'rgba(255, 255, 255, 0.02)' }}>
+                    <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>Supplier Information</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      <strong>Name:</strong> <span style={{ color: 'var(--text-primary)', fontWeight: '600' }}>{suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.SupplierName}</span>
+                      <strong>Code:</strong> <span className="mono">{suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.SupplierCode}</span>
+                      <strong>Address:</strong> <span>{suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.Address || '--'}{suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.City ? `, ${suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.City}` : ''}</span>
+                      <strong>Contact:</strong> <span>{suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.MobileNumber || '--'}</span>
+                      <strong>Email:</strong> <span>{suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.EmailAddress || '--'}</span>
+                    </div>
+                  </div>
+                  <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', background: 'rgba(255, 255, 255, 0.02)' }}>
+                    <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>Account & Payment Terms</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                      <strong>Credit Limit:</strong> <span className="mono">Rs. {Number(suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.CreditLimit || 0).toFixed(2)}</span>
+                      <strong>Credit Period:</strong> <span>{suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.CreditPeriodDays || 0} Days</span>
+                      <strong>Payment Terms:</strong> <span>{suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.PaymentTerms || '--'}</span>
+                      <strong>Real-time Balance:</strong> <span className="mono" style={{ color: parseFloat(suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.CurrentBalance) > 0 ? 'var(--warning)' : 'var(--text-primary)', fontWeight: '700' }}>Rs. {Number(suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.CurrentBalance || 0).toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Summaries Metrics Row */}
+                {(() => {
+                  let totalPurchases = 0;
+                  let totalPayments = 0;
+                  let totalReturns = 0;
+                  reportResult.forEach(t => {
+                    const amt = parseFloat(t.Amount || 0);
+                    if (t.ReferenceType === 'Purchase Invoice') {
+                      totalPurchases += amt;
+                    } else if (t.ReferenceType === 'Payment Made') {
+                      totalPayments += amt;
+                    } else if (t.ReferenceType === 'Supplier Return') {
+                      totalReturns += amt;
+                    }
+                  });
+                  return (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+                      <div className="glass-panel" style={{ padding: '14px', textAlign: 'center', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)' }}>
+                        <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '4px' }}>Opening Balance</div>
+                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>Rs. {Number(reportOpeningBalance).toFixed(2)}</div>
+                      </div>
+                      <div className="glass-panel" style={{ padding: '14px', textAlign: 'center', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)' }}>
+                        <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '4px' }}>Total Purchases (+)</div>
+                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: 'var(--warning)' }}>Rs. {totalPurchases.toFixed(2)}</div>
+                      </div>
+                      <div className="glass-panel" style={{ padding: '14px', textAlign: 'center', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)' }}>
+                        <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '4px' }}>Total Payments (-)</div>
+                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: 'var(--success)' }}>Rs. {totalPayments.toFixed(2)}</div>
+                      </div>
+                      <div className="glass-panel" style={{ padding: '14px', textAlign: 'center', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)' }}>
+                        <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '4px' }}>Total Returns (-)</div>
+                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: 'var(--danger)' }}>Rs. {totalReturns.toFixed(2)}</div>
+                      </div>
+                      <div className="glass-panel" style={{ padding: '14px', textAlign: 'center', background: 'rgba(56, 189, 248, 0.06)', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
+                        <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#38bdf8', marginBottom: '4px' }}>Closing Balance (=)</div>
+                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: '#38bdf8' }}>Rs. {Number(reportClosingBalance).toFixed(2)}</div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Ledger Details Table */}
+                <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
+                  <div className="table-container" style={{ maxHeight: '400px' }}>
+                    <table className="table-glass" style={{ margin: 0 }}>
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Document No</th>
+                          <th>Description</th>
+                          <th style={{ textAlign: 'right' }}>Debit</th>
+                          <th style={{ textAlign: 'right' }}>Credit</th>
+                          <th style={{ textAlign: 'right' }}>Balance</th>
                         </tr>
-                      ))
-                    ) : selectedReportType === 'ledger' ? (
-                      <>
-                        <tr style={{ background: 'rgba(255, 255, 255, 0.05)', fontWeight: 'bold' }}>
-                          <td colSpan={6}>Opening Balance</td>
-                          <td className="mono" style={{ textAlign: 'right' }}>Rs. {Number(reportOpeningBalance).toFixed(2)}</td>
+                      </thead>
+                      <tbody>
+                        <tr style={{ background: 'rgba(255, 255, 255, 0.03)', fontWeight: 'bold' }}>
+                          <td></td>
+                          <td>--</td>
+                          <td style={{ color: 'var(--text-primary)' }}>Period Opening Balance</td>
+                          <td style={{ textAlign: 'right' }}>--</td>
+                          <td style={{ textAlign: 'right' }}>--</td>
+                          <td className="mono" style={{ textAlign: 'right', color: 'var(--text-primary)' }}>Rs. {Number(reportOpeningBalance).toFixed(2)}</td>
                         </tr>
-                        {reportResult.map((r, idx) => {
-                          const { refNo, invoiceNo } = getLedgerRowDetails(r);
+                        {reportResult.map((tx, idx) => {
+                          const { refNo } = getLedgerRowDetails(tx);
                           return (
-                            <tr key={r.LedgerID || idx}>
-                              <td>{new Date(r.TransactionDate).toLocaleDateString()}</td>
+                            <tr key={tx.LedgerID || idx}>
+                              <td>{new Date(tx.TransactionDate).toLocaleDateString()}</td>
                               <td className="mono">{refNo}</td>
-                              <td className="mono">{invoiceNo}</td>
-                              <td style={{ fontWeight: '600' }}>{r.ReferenceType}</td>
-                              <td className="mono" style={{ textAlign: 'right', color: r.TransactionType === 'Debit' ? 'var(--success)' : 'inherit' }}>
-                                {r.TransactionType === 'Debit' ? `Rs. ${Number(r.Amount).toFixed(2)}` : '--'}
+                              <td>{tx.Description || tx.ReferenceType}</td>
+                              <td className="mono" style={{ textAlign: 'right', color: tx.TransactionType === 'Debit' ? 'var(--success)' : 'inherit' }}>
+                                {tx.TransactionType === 'Debit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
                               </td>
-                              <td className="mono" style={{ textAlign: 'right', color: r.TransactionType === 'Credit' ? 'var(--warning)' : 'inherit' }}>
-                                {r.TransactionType === 'Credit' ? `Rs. ${Number(r.Amount).toFixed(2)}` : '--'}
+                              <td className="mono" style={{ textAlign: 'right', color: tx.TransactionType === 'Credit' ? 'var(--warning)' : 'inherit' }}>
+                                {tx.TransactionType === 'Credit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
                               </td>
-                              <td className="mono" style={{ textAlign: 'right', fontWeight: '700' }}>Rs. {Number(r.RunningBalance).toFixed(2)}</td>
+                              <td className="mono" style={{ textAlign: 'right', fontWeight: '600' }}>Rs. {Number(tx.RunningBalance).toFixed(2)}</td>
                             </tr>
                           );
                         })}
-                        <tr style={{ background: 'rgba(255, 255, 255, 0.05)', fontWeight: 'bold' }}>
-                          <td colSpan={6}>Closing Balance</td>
-                          <td className="mono" style={{ textAlign: 'right' }}>Rs. {Number(reportClosingBalance).toFixed(2)}</td>
+                        <tr style={{ background: 'rgba(255, 255, 255, 0.03)', fontWeight: 'bold' }}>
+                          <td></td>
+                          <td>--</td>
+                          <td style={{ color: '#38bdf8' }}>Period Closing Balance</td>
+                          <td style={{ textAlign: 'right' }}>--</td>
+                          <td style={{ textAlign: 'right' }}>--</td>
+                          <td className="mono" style={{ textAlign: 'right', color: '#38bdf8' }}>Rs. {Number(reportClosingBalance).toFixed(2)}</td>
                         </tr>
-                      </>
-                    ) : (
-                      reportResult.map(r => (
-                        <tr key={r.PurchaseOrderID}>
-                          <td className="mono" style={{ fontWeight: '700' }}>{r.PONumber}</td>
-                          <td style={{ fontWeight: '600' }}>{r.SupplierName}</td>
-                          <td>{new Date(r.OrderDate).toLocaleDateString()}</td>
-                          <td className="mono">Rs. {Number(r.TotalAmount).toFixed(2)}</td>
-                          <td>{r.Status}</td>
-                          <td className="mono">{r.InvoiceNumber || '--'}</td>
-                          <td>{r.PaymentStatus}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Final Closing Summaries Footer Card */}
+                {(() => {
+                  let totalPurchases = 0;
+                  let totalPayments = 0;
+                  let totalReturns = 0;
+                  reportResult.forEach(t => {
+                    const amt = parseFloat(t.Amount || 0);
+                    if (t.ReferenceType === 'Purchase Invoice') {
+                      totalPurchases += amt;
+                    } else if (t.ReferenceType === 'Payment Made') {
+                      totalPayments += amt;
+                    } else if (t.ReferenceType === 'Supplier Return') {
+                      totalReturns += amt;
+                    }
+                  });
+                  const activeSupplier = suppliers.find(s => String(s.SupplierID) === String(reportSupplierId));
+                  return (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
+                      <div style={{ width: '300px', display: 'flex', flexDirection: 'column', gap: '8px', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', background: 'rgba(255, 255, 255, 0.01)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          <span>Period Opening Balance:</span>
+                          <span className="mono" style={{ color: 'var(--text-primary)' }}>Rs. {Number(reportOpeningBalance).toFixed(2)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          <span>Total Purchases (+):</span>
+                          <span className="mono" style={{ color: 'var(--warning)' }}>Rs. {totalPurchases.toFixed(2)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          <span>Total Payments (-):</span>
+                          <span className="mono" style={{ color: 'var(--success)' }}>Rs. {totalPayments.toFixed(2)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                          <span>Total Returns (-):</span>
+                          <span className="mono" style={{ color: 'var(--danger)' }}>Rs. {totalReturns.toFixed(2)}</span>
+                        </div>
+                        <hr style={{ border: 0, borderTop: '1px solid var(--border-color)', margin: '4px 0' }} />
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700' }}>
+                          <span style={{ color: '#38bdf8' }}>Closing Balance (=):</span>
+                          <span className="mono" style={{ color: '#38bdf8' }}>Rs. {Number(reportClosingBalance).toFixed(2)}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700' }}>
+                          <span style={{ color: 'var(--danger)' }}>Outstanding Payable:</span>
+                          <span className="mono" style={{ color: 'var(--danger)' }}>Rs. {Number(activeSupplier?.CurrentBalance || 0).toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
               </div>
-            </div>
+            ) : (
+              <div className="glass-panel" style={{ padding: 0 }}>
+                <div className="table-container">
+                  <table className="table-glass">
+                    <thead>
+                      {selectedReportType === 'list' || selectedReportType === 'payables' ? (
+                        <tr>
+                          <th>Code</th>
+                          <th>Supplier</th>
+                          <th>Contact Email</th>
+                          <th>Phone</th>
+                          <th>Credit Limit</th>
+                          <th>Outstanding Payables</th>
+                          <th>Category</th>
+                        </tr>
+                      ) : selectedReportType === 'ledger' ? (
+                        <tr>
+                          <th>Date</th>
+                          <th>Reference No</th>
+                          <th>Invoice No</th>
+                          <th>Transaction Type</th>
+                          <th style={{ textAlign: 'right' }}>Debit</th>
+                          <th style={{ textAlign: 'right' }}>Credit</th>
+                          <th style={{ textAlign: 'right' }}>Balance</th>
+                        </tr>
+                      ) : (
+                        <tr>
+                          <th>PO Number</th>
+                          <th>Supplier</th>
+                          <th>Date</th>
+                          <th>Amount</th>
+                          <th>PO Status</th>
+                          <th>Invoice No</th>
+                          <th>Payment</th>
+                        </tr>
+                      )}
+                    </thead>
+                    <tbody>
+                      {selectedReportType === 'list' || selectedReportType === 'payables' ? (
+                        reportResult.map(r => (
+                          <tr key={r.SupplierID}>
+                            <td className="mono" style={{ fontWeight: '700' }}>{r.SupplierCode}</td>
+                            <td style={{ fontWeight: '600' }}>{r.SupplierName}</td>
+                            <td>{r.EmailAddress || '--'}</td>
+                            <td>{r.MobileNumber || '--'}</td>
+                            <td className="mono">Rs. {Number(r.CreditLimit).toFixed(2)}</td>
+                            <td className="mono" style={{ fontWeight: '700', color: parseFloat(r.CurrentBalance) > 0 ? 'var(--warning)' : 'inherit' }}>
+                              Rs. {Number(r.CurrentBalance).toFixed(2)}
+                            </td>
+                            <td>{r.SupplierCategory}</td>
+                          </tr>
+                        ))
+                      ) : selectedReportType === 'ledger' ? (
+                        <>
+                          <tr style={{ background: 'rgba(255, 255, 255, 0.05)', fontWeight: 'bold' }}>
+                            <td colSpan={6}>Opening Balance</td>
+                            <td className="mono" style={{ textAlign: 'right' }}>Rs. {Number(reportOpeningBalance).toFixed(2)}</td>
+                          </tr>
+                          {reportResult.map((r, idx) => {
+                            const { refNo, invoiceNo } = getLedgerRowDetails(r);
+                            return (
+                              <tr key={r.LedgerID || idx}>
+                                <td>{new Date(r.TransactionDate).toLocaleDateString()}</td>
+                                <td className="mono">{refNo}</td>
+                                <td className="mono">{invoiceNo}</td>
+                                <td style={{ fontWeight: '600' }}>{r.ReferenceType}</td>
+                                <td className="mono" style={{ textAlign: 'right', color: r.TransactionType === 'Debit' ? 'var(--success)' : 'inherit' }}>
+                                  {r.TransactionType === 'Debit' ? `Rs. ${Number(r.Amount).toFixed(2)}` : '--'}
+                                </td>
+                                <td className="mono" style={{ textAlign: 'right', color: r.TransactionType === 'Credit' ? 'var(--warning)' : 'inherit' }}>
+                                  {r.TransactionType === 'Credit' ? `Rs. ${Number(r.Amount).toFixed(2)}` : '--'}
+                                </td>
+                                <td className="mono" style={{ textAlign: 'right', fontWeight: '700' }}>Rs. {Number(r.RunningBalance).toFixed(2)}</td>
+                              </tr>
+                            );
+                          })}
+                          <tr style={{ background: 'rgba(255, 255, 255, 0.05)', fontWeight: 'bold' }}>
+                            <td colSpan={6}>Closing Balance</td>
+                            <td className="mono" style={{ textAlign: 'right' }}>Rs. {Number(reportClosingBalance).toFixed(2)}</td>
+                          </tr>
+                        </>
+                      ) : (
+                        reportResult.map(r => (
+                          <tr key={r.PurchaseOrderID}>
+                            <td className="mono" style={{ fontWeight: '700' }}>{r.PONumber}</td>
+                            <td style={{ fontWeight: '600' }}>{r.SupplierName}</td>
+                            <td>{new Date(r.OrderDate).toLocaleDateString()}</td>
+                            <td className="mono">Rs. {Number(r.TotalAmount).toFixed(2)}</td>
+                            <td>{r.Status}</td>
+                            <td className="mono">{r.InvoiceNumber || '--'}</td>
+                            <td>{r.PaymentStatus}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
           )}
 
         </div>
@@ -2811,6 +3374,153 @@ export default function Suppliers({ setToast }) {
                   <span>Rs. {Number(printLedgerData.closingBalance).toFixed(2)}</span>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================================
+         PRINT ONLY SUPPLIER STATEMENT VIEWER (Hides non-print with CSS)
+         ============================================================================ */}
+      {printStatementData && (
+        <div className="printable-report" style={{ display: 'none' }}>
+          <div style={{ padding: '35px', background: '#fff', color: '#000', fontFamily: 'sans-serif' }}>
+            {/* Header Block */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #334155', paddingBottom: '15px' }}>
+              <div>
+                {companyProfile?.LogoURL ? (
+                  <img src={companyProfile.LogoURL} alt="Logo" style={{ maxHeight: '60px', marginBottom: '10px', display: 'block' }} />
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '50px', height: '50px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '8px', fontSize: '20px', fontWeight: 'bold', color: '#475569', marginBottom: '10px' }}>
+                    {companyProfile?.Name ? companyProfile.Name.charAt(0) : 'S'}
+                  </div>
+                )}
+                <h1 style={{ fontSize: '22px', fontWeight: 'bold', margin: '0', color: '#1e293b' }}>{companyProfile?.Name || 'SellMax Pro'}</h1>
+                <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: '#64748b', lineHeight: '1.4' }}>
+                  {companyProfile?.AddressLine1 || ''} {companyProfile?.City || ''}<br />
+                  Phone: {companyProfile?.MobileNumber || companyProfile?.TelephoneNumber || '--'} | Email: {companyProfile?.Email || '--'}<br />
+                  Website: {companyProfile?.Website || '--'} | VAT/Tax: {companyProfile?.TaxRegNo || companyProfile?.taxRegNo || '--'}
+                </p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <h2 style={{ fontSize: '20px', fontWeight: 'bold', color: '#0f172a', margin: '0 0 10px 0', letterSpacing: '0.5px' }}>ACCOUNT STATEMENT</h2>
+                <div style={{ fontSize: '12px', color: '#475569', lineHeight: '1.5' }}>
+                  <strong>Statement Period:</strong> {printStatementData.period}<br />
+                  <strong>Date Issued:</strong> {new Date().toLocaleDateString()}<br />
+                  <strong>Branch:</strong> {reportBranch || 'All Branches'}
+                </div>
+              </div>
+            </div>
+
+            {/* Supplier / Terms Block */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', margin: '20px 0', fontSize: '12px', lineHeight: '1.5' }}>
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px', background: '#f8fafc' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: '700', color: '#1e293b', borderBottom: '1px solid #cbd5e1', paddingBottom: '4px' }}>Supplier Information</h4>
+                <strong>Name:</strong> {printStatementData.supplier?.SupplierName}<br />
+                <strong>Code:</strong> {printStatementData.supplier?.SupplierCode}<br />
+                <strong>Address:</strong> {printStatementData.supplier?.Address || '--'}{printStatementData.supplier?.City ? `, ${printStatementData.supplier.City}` : ''}<br />
+                <strong>Phone:</strong> {printStatementData.supplier?.MobileNumber || '--'}<br />
+                <strong>Email:</strong> {printStatementData.supplier?.EmailAddress || '--'}
+              </div>
+              <div style={{ border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px', background: '#f8fafc' }}>
+                <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: '700', color: '#1e293b', borderBottom: '1px solid #cbd5e1', paddingBottom: '4px' }}>Account & Payment Terms</h4>
+                <strong>Credit Limit:</strong> Rs. {Number(printStatementData.supplier?.CreditLimit || 0).toFixed(2)}<br />
+                <strong>Credit Period:</strong> {printStatementData.supplier?.CreditPeriodDays || 0} Days<br />
+                <strong>Payment Terms:</strong> {printStatementData.supplier?.PaymentTerms || '--'}<br />
+                <strong>Real-time Balance Due:</strong> Rs. {Number(printStatementData.supplier?.CurrentBalance || 0).toFixed(2)}
+              </div>
+            </div>
+
+            {/* Ledger Table */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '15px', fontSize: '11px' }}>
+              <thead>
+                <tr style={{ background: '#f1f5f9', borderBottom: '2px solid #cbd5e1' }}>
+                  <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: '700', color: '#334155' }}>Date</th>
+                  <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: '700', color: '#334155' }}>Document No</th>
+                  <th style={{ textAlign: 'left', padding: '10px 8px', fontWeight: '700', color: '#334155' }}>Description</th>
+                  <th style={{ textAlign: 'right', padding: '10px 8px', fontWeight: '700', color: '#334155' }}>Debit</th>
+                  <th style={{ textAlign: 'right', padding: '10px 8px', fontWeight: '700', color: '#334155' }}>Credit</th>
+                  <th style={{ textAlign: 'right', padding: '10px 8px', fontWeight: '700', color: '#334155' }}>Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* Period Opening Balance Row */}
+                <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#fafafa', fontWeight: '600' }}>
+                  <td style={{ padding: '8px' }}></td>
+                  <td style={{ padding: '8px' }}>--</td>
+                  <td style={{ padding: '8px' }}>Period Opening Balance</td>
+                  <td style={{ padding: '8px', textAlign: 'right' }}>--</td>
+                  <td style={{ padding: '8px', textAlign: 'right' }}>--</td>
+                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700' }}>Rs. {Number(printStatementData.openingBalance || 0).toFixed(2)}</td>
+                </tr>
+
+                {printStatementData.transactions?.map((tx, idx) => {
+                  const { refNo } = getLedgerRowDetails(tx);
+                  return (
+                    <tr key={tx.LedgerID || idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                      <td style={{ padding: '8px' }}>{new Date(tx.TransactionDate).toLocaleDateString()}</td>
+                      <td style={{ padding: '8px' }} className="mono">{refNo}</td>
+                      <td style={{ padding: '8px' }}>{tx.Description || tx.ReferenceType}</td>
+                      <td style={{ textAlign: 'right', padding: '8px', color: tx.TransactionType === 'Debit' ? '#16a34a' : 'inherit' }} className="mono">
+                        {tx.TransactionType === 'Debit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
+                      </td>
+                      <td style={{ textAlign: 'right', padding: '8px', color: tx.TransactionType === 'Credit' ? '#ca8a04' : 'inherit' }} className="mono">
+                        {tx.TransactionType === 'Credit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
+                      </td>
+                      <td style={{ textAlign: 'right', padding: '8px', fontWeight: '600' }} className="mono">
+                        Rs. {Number(tx.RunningBalance).toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {/* Period Closing Balance Row */}
+                <tr style={{ borderBottom: '1px solid #cbd5e1', background: '#fafafa', fontWeight: '600' }}>
+                  <td style={{ padding: '8px' }}></td>
+                  <td style={{ padding: '8px' }}>--</td>
+                  <td style={{ padding: '8px' }}>Period Closing Balance</td>
+                  <td style={{ padding: '8px', textAlign: 'right' }}>--</td>
+                  <td style={{ padding: '8px', textAlign: 'right' }}>--</td>
+                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700' }}>Rs. {Number(printStatementData.closingBalance || 0).toFixed(2)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Closing Summaries Block */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <table style={{ width: '300px', fontSize: '11px', borderCollapse: 'collapse', border: '1px solid #cbd5e1', borderRadius: '4px', background: '#f8fafc' }}>
+                <tbody>
+                  <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
+                    <td style={{ padding: '8px', fontWeight: '600' }}>Period Opening Balance:</td>
+                    <td style={{ padding: '8px', textAlign: 'right' }}>Rs. {Number(printStatementData.openingBalance || 0).toFixed(2)}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#1e3a8a' }}>
+                    <td style={{ padding: '8px', fontWeight: '600' }}>Total Purchases (+):</td>
+                    <td style={{ padding: '8px', textAlign: 'right' }}>Rs. {Number(printStatementData.totalPurchases || 0).toFixed(2)}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#16a34a' }}>
+                    <td style={{ padding: '8px', fontWeight: '600' }}>Total Payments (-):</td>
+                    <td style={{ padding: '8px', textAlign: 'right' }}>Rs. {Number(printStatementData.totalPayments || 0).toFixed(2)}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid #cbd5e1', color: '#dc2626' }}>
+                    <td style={{ padding: '8px', fontWeight: '600' }}>Total Returns (-):</td>
+                    <td style={{ padding: '8px', textAlign: 'right' }}>Rs. {Number(printStatementData.totalReturns || 0).toFixed(2)}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid #cbd5e1', background: '#f1f5f9' }}>
+                    <td style={{ padding: '8px', fontWeight: '700' }}>Closing Balance (=):</td>
+                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700' }}>Rs. {Number(printStatementData.closingBalance || 0).toFixed(2)}</td>
+                  </tr>
+                  <tr style={{ background: '#fef2f2', color: '#991b1b' }}>
+                    <td style={{ padding: '8px', fontWeight: '700' }}>Outstanding Payable:</td>
+                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700' }}>Rs. {Number(printStatementData.supplier?.CurrentBalance || 0).toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* Note Footer */}
+            <div style={{ marginTop: '40px', fontSize: '9px', color: '#64748b', textAlign: 'center', borderTop: '1px dashed #cbd5e1', paddingTop: '15px' }}>
+              This is a system-generated statement. Please notify us of any discrepancies within 7 days. Thank you for your business!
             </div>
           </div>
         </div>

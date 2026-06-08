@@ -2,3 +2,38 @@
 [2026-06-07T06:30:46.881Z] Email Sent to Store Admin: Low Stock Alert: Product 'Anchor' is at 10 pcs (Threshold: 10).
 [2026-06-08T12:49:34.242Z] Email Sent to Store Admin: Low Stock Alert: Product 'Chocolate Chip Muffin' is at 2 pcs (Threshold: 8).
 [2026-06-08T12:49:34.242Z] Email Sent to Store Admin: Low Stock Alert: Product 'Anchor' is at 10 pcs (Threshold: 10).
+
+================================================================================
+SIMULATED EMAIL STATEMENT TRANSMISSION
+Timestamp: 2026-06-08T18:04:56.667Z
+--------------------------------------------------------------------------------
+From: Eziby.lk@gmail.com (CC: Eziby.lk@gmail.com)
+To: supplier@acmetest.com (Attn: Acme Attn)
+Subject: Account Statement from EziBy Smart Shopping.lk [2026-06-01 to 2026-06-08]
+
+Dear Acme Attn,
+
+Please find below the account summary and statement details of your account for the period 2026-06-01 to 2026-06-08.
+
+STATEMENT SUMMARY:
+- Period Opening Balance: Rs. 0.00
+- Total Purchases (+):    Rs. 12650.00
+- Total Payments (-):     Rs. 10000.00
+- Total Returns (-):      Rs. 11000.00
+- Period Closing Balance: Rs. -6850.00
+- Current Balance Due:    Rs. -17000.00
+
+TRANSACTION DETAILS:
+Date       | Ref / Doc No  | Type                | Debit      | Credit     | Running Balance
+-----------|---------------|---------------------|------------|------------|----------------
+           |               | Opening Balance     |            |            | Rs. 0.00
+6/7/2026   | OPENING       | Opening Balance     |            | Rs. 1500.00 | Rs. 1500.00
+6/7/2026   | sfsf          | Purchase Invoice    |            | Rs. 12650.00 | Rs. 14150.00
+6/7/2026   | RET-27655906  | Supplier Return     | Rs. 11000.00 |            | Rs. 3150.00
+6/7/2026   | PV-33678421   | Payment Made        | Rs. 10000.00 |            | Rs. -6850.00
+           |               | Closing Balance     |            |            | Rs. -6850.00
+--------------------------------------------------------------------------------
+Company: EziBy Smart Shopping.lk | Phone: 0779818879 | Address: Hajiyar Road, Nintavur
+================================================================================
+[2026-06-08T18:33:58.040Z] Email Sent to Store Admin: Low Stock Alert: Product 'Chocolate Chip Muffin' is at 2 pcs (Threshold: 8).
+[2026-06-08T18:33:58.040Z] Email Sent to Store Admin: Low Stock Alert: Product 'Anchor' is at 10 pcs (Threshold: 10).

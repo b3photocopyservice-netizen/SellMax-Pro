@@ -375,6 +375,101 @@ class SupplierService {
       }
     }
   }
+
+  async sendStatementEmail(companyId, userId, supplierId, data) {
+    const fs = require('fs');
+    const path = require('path');
+    const companyService = require('./companyService');
+
+    const supplier = await supplierRepository.getSupplierById(supplierId, companyId);
+    if (!supplier) throw new Error('Supplier not found.');
+    if (!supplier.EmailAddress) {
+      throw new Error(`Supplier '${supplier.SupplierName}' does not have a registered email address.`);
+    }
+
+    const company = await companyService.getCompanyProfile(companyId);
+    const { startDate, endDate, branchName } = data;
+
+    // Fetch ledger calculations
+    const ledger = await supplierRepository.getSupplierLedger(supplierId, companyId, { startDate, endDate, branchName });
+    
+    // Calculate summaries
+    let totalPurchases = 0;
+    let totalPayments = 0;
+    let totalReturns = 0;
+
+    ledger.transactions.forEach(t => {
+      const amt = parseFloat(t.Amount || 0);
+      if (t.ReferenceType === 'Purchase Invoice') {
+        totalPurchases += amt;
+      } else if (t.ReferenceType === 'Payment Made') {
+        totalPayments += amt;
+      } else if (t.ReferenceType === 'Supplier Return') {
+        totalReturns += amt;
+      }
+    });
+
+    const periodStr = startDate && endDate ? `${startDate} to ${endDate}` : 'All-Time';
+    const timestamp = new Date().toISOString();
+
+    // Construct text representation
+    let emailText = `\n================================================================================\n`;
+    emailText += `SIMULATED EMAIL STATEMENT TRANSMISSION\n`;
+    emailText += `Timestamp: ${timestamp}\n`;
+    emailText += `--------------------------------------------------------------------------------\n`;
+    emailText += `From: ${company.Email || 'billing@sellmaxpro.com'} (CC: ${company.Email || ''})\n`;
+    emailText += `To: ${supplier.EmailAddress} (Attn: ${supplier.ContactPerson || supplier.SupplierName})\n`;
+    emailText += `Subject: Account Statement from ${company.Name} [${periodStr}]\n\n`;
+    emailText += `Dear ${supplier.ContactPerson || supplier.SupplierName},\n\n`;
+    emailText += `Please find below the account summary and statement details of your account for the period ${periodStr}.\n\n`;
+    
+    emailText += `STATEMENT SUMMARY:\n`;
+    emailText += `- Period Opening Balance: Rs. ${parseFloat(ledger.openingBalance).toFixed(2)}\n`;
+    emailText += `- Total Purchases (+):    Rs. ${totalPurchases.toFixed(2)}\n`;
+    emailText += `- Total Payments (-):     Rs. ${totalPayments.toFixed(2)}\n`;
+    emailText += `- Total Returns (-):      Rs. ${totalReturns.toFixed(2)}\n`;
+    emailText += `- Period Closing Balance: Rs. ${parseFloat(ledger.closingBalance).toFixed(2)}\n`;
+    emailText += `- Current Balance Due:    Rs. ${parseFloat(supplier.CurrentBalance).toFixed(2)}\n\n`;
+
+    emailText += `TRANSACTION DETAILS:\n`;
+    emailText += `Date       | Ref / Doc No  | Type                | Debit      | Credit     | Running Balance\n`;
+    emailText += `-----------|---------------|---------------------|------------|------------|----------------\n`;
+    emailText += `           |               | Opening Balance     |            |            | Rs. ${parseFloat(ledger.openingBalance).toFixed(2)}\n`;
+
+    ledger.transactions.forEach(t => {
+      const dateStr = new Date(t.TransactionDate).toLocaleDateString().padEnd(10);
+      const docNo = (t.ReferenceNumber || '').padEnd(13);
+      const typeStr = (t.ReferenceType || '').padEnd(19);
+      const deb = t.TransactionType === 'Debit' ? `Rs. ${parseFloat(t.Amount).toFixed(2)}` : '';
+      const cred = t.TransactionType === 'Credit' ? `Rs. ${parseFloat(t.Amount).toFixed(2)}` : '';
+      const bal = `Rs. ${parseFloat(t.RunningBalance).toFixed(2)}`;
+      
+      emailText += `${dateStr} | ${docNo} | ${typeStr} | ${deb.padEnd(10)} | ${cred.padEnd(10)} | ${bal}\n`;
+    });
+    
+    emailText += `           |               | Closing Balance     |            |            | Rs. ${parseFloat(ledger.closingBalance).toFixed(2)}\n`;
+    emailText += `--------------------------------------------------------------------------------\n`;
+    emailText += `Company: ${company.Name} | Phone: ${company.MobileNumber || company.TelephoneNumber || ''} | Address: ${company.AddressLine1 || ''}, ${company.City || ''}\n`;
+    emailText += `================================================================================\n`;
+
+    // Write to email log
+    const logDir = path.join(__dirname, '..', 'logs');
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+    const logPath = path.join(logDir, 'email_notifications.log');
+    fs.appendFileSync(logPath, emailText);
+
+    // Create Audit Log
+    await supplierRepository.createAuditLog(
+      companyId,
+      userId,
+      'Email Statement',
+      `Account statement for period [${periodStr}] emailed to supplier ${supplier.SupplierName} at ${supplier.EmailAddress}.`
+    );
+
+    return { success: true, message: `Account statement email successfully simulated and logged to logs/email_notifications.log.` };
+  }
 }
 
 module.exports = new SupplierService();
