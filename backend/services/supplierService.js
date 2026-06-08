@@ -320,6 +320,28 @@ class SupplierService {
     return await supplierRepository.getSupplierLedger(supplierId, companyId, filters);
   }
 
+  async makeLedgerAdjustment(companyId, userId, data) {
+    if (!data.supplierId) throw new Error('Supplier selection is required.');
+    if (!data.amount || parseFloat(data.amount) <= 0) throw new Error('Amount must be greater than zero.');
+    if (!data.adjustmentType) throw new Error('Adjustment type is required.');
+    if (!data.effect) throw new Error('Adjustment effect is required (Credit or Debit).');
+
+    const supplier = await supplierRepository.getSupplierById(data.supplierId, companyId);
+    if (!supplier) throw new Error('Supplier not found.');
+
+    const result = await supplierRepository.createLedgerAdjustment(companyId, userId, data);
+
+    // Log audit
+    await supplierRepository.createAuditLog(
+      companyId, 
+      userId, 
+      'Ledger Adjustment', 
+      `${data.adjustmentType} adjustment processed for supplier ${supplier.SupplierName}. Amount: Rs. ${parseFloat(data.amount).toFixed(2)}, Effect: ${data.effect}.`
+    );
+
+    return result;
+  }
+
   async getWidgets(companyId) {
     return await supplierRepository.getSupplierWidgets(companyId);
   }

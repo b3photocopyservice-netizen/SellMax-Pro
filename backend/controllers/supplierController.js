@@ -283,4 +283,16 @@ router.post('/payments', authenticateToken, checkPermission('VIEW_SUPPLIER_FINAN
   }
 });
 
+// POST /api/suppliers/adjustments
+router.post('/adjustments', authenticateToken, checkPermission('VIEW_SUPPLIER_FINANCIALS'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const userId = req.user.userId;
+    const adjustment = await supplierService.makeLedgerAdjustment(companyId, userId, req.body);
+    res.status(201).json(adjustment);
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

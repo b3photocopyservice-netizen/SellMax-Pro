@@ -139,6 +139,22 @@ export default function Suppliers({ setToast }) {
   const [selectedLedgerSupplier, setSelectedLedgerSupplier] = useState('');
   const [ledgerTransactions, setLedgerTransactions] = useState([]);
   const [ledgerSummary, setLedgerSummary] = useState({ balance: 0, creditLimit: 0 });
+  const [ledgerStartDate, setLedgerStartDate] = useState('');
+  const [ledgerEndDate, setLedgerEndDate] = useState('');
+  const [ledgerOpeningBalance, setLedgerOpeningBalance] = useState(0);
+  const [ledgerClosingBalance, setLedgerClosingBalance] = useState(0);
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [printLedgerData, setPrintLedgerData] = useState(null);
+  const [adjustmentForm, setAdjustmentForm] = useState({
+    supplierId: '',
+    adjustmentType: 'Debit Note',
+    effect: 'Debit',
+    amount: '',
+    referenceNumber: '',
+    notes: '',
+    branchName: '',
+    date: new Date().toISOString().split('T')[0]
+  });
 
   // 8. Reports Tab
   const [selectedReportType, setSelectedReportType] = useState('payables'); // 'list', 'payables', 'ledger', 'history'
@@ -147,6 +163,8 @@ export default function Suppliers({ setToast }) {
   const [reportStartDate, setReportStartDate] = useState('');
   const [reportEndDate, setReportEndDate] = useState('');
   const [reportResult, setReportResult] = useState([]);
+  const [reportOpeningBalance, setReportOpeningBalance] = useState(0);
+  const [reportClosingBalance, setReportClosingBalance] = useState(0);
 
   // 9. Purchase Manager Sub-tabs
   const [purchaseSubTab, setPurchaseSubTab] = useState('orders'); // 'orders', 'grninvoice', 'returns'
@@ -176,6 +194,7 @@ export default function Suppliers({ setToast }) {
       if (e.key !== 'Escape') return;
       if (showDirectCashPurchaseModal) { setShowDirectCashPurchaseModal(false); return; }
       if (showDirectCreditPurchaseModal) { setShowDirectCreditPurchaseModal(false); return; }
+      if (showAdjustmentModal)        { setShowAdjustmentModal(false);         return; }
       if (showPaymentModal)           { setShowPaymentModal(false);           return; }
       if (showCreateInvoiceGrnModal)  { setShowCreateInvoiceGrnModal(false);  return; }
       if (showInvoiceModal)           { setShowInvoiceModal(false);            return; }
@@ -191,6 +210,7 @@ export default function Suppliers({ setToast }) {
   }, [
     showDirectCashPurchaseModal,
     showDirectCreditPurchaseModal,
+    showAdjustmentModal,
     showPaymentModal,
     showCreateInvoiceGrnModal,
     showInvoiceModal,
@@ -950,15 +970,130 @@ export default function Suppliers({ setToast }) {
     }
   };
 
-  const fetchLedger = async (supplierId) => {
+  const getLedgerRowDetails = (tx) => {
+    let refNo = '--';
+    let invoiceNo = '--';
+    
+    if (tx.ReferenceType === 'Purchase Invoice') {
+      invoiceNo = tx.ReferenceNumber || '--';
+      const poMatch = tx.Description ? tx.Description.match(/PO\s+(\S+)/) : null;
+      refNo = poMatch ? poMatch[1] : '--';
+    } else if (tx.ReferenceType === 'Payment Made') {
+      refNo = tx.ReferenceNumber || '--';
+      const invMatch = tx.Description ? tx.Description.match(/bill\s+(\S+)/) || tx.Description.match(/(INV-\S+)/) : null;
+      invoiceNo = invMatch ? invMatch[1] : '--';
+    } else if (tx.ReferenceType === 'Supplier Return') {
+      refNo = tx.ReferenceNumber || '--';
+    } else if (tx.ReferenceType === 'Debit Note' || tx.ReferenceType === 'Credit Note') {
+      refNo = tx.ReferenceNumber || '--';
+    } else if (tx.ReferenceType === 'Opening Balance') {
+      refNo = tx.ReferenceNumber || '--';
+    }
+    
+    return { refNo, invoiceNo };
+  };
+
+  const handleOpenAdjustmentModal = () => {
+    setAdjustmentForm({
+      supplierId: selectedLedgerSupplier || suppliers[0]?.SupplierID || '',
+      adjustmentType: 'Debit Note',
+      effect: 'Debit',
+      amount: '',
+      referenceNumber: '',
+      notes: '',
+      branchName: user?.branchName || 'Main Store',
+      date: new Date().toISOString().split('T')[0]
+    });
+    setShowAdjustmentModal(true);
+  };
+
+  const handleAdjustmentSubmit = async (e) => {
+    e.preventDefault();
+    if (!canViewFinancials) return;
+
+    if (!adjustmentForm.supplierId) {
+      setToast({ type: 'error', message: 'Supplier is required.' });
+      return;
+    }
+    if (!adjustmentForm.amount || parseFloat(adjustmentForm.amount) <= 0) {
+      setToast({ type: 'error', message: 'Valid adjustment amount is required.' });
+      return;
+    }
+    if (!adjustmentForm.adjustmentType) {
+      setToast({ type: 'error', message: 'Adjustment Type is required.' });
+      return;
+    }
+    if (!adjustmentForm.effect) {
+      setToast({ type: 'error', message: 'Adjustment Effect (Debit or Credit) is required.' });
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      const res = await fetch(`${API_URL}/api/suppliers/adjustments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(adjustmentForm)
+      });
+      if (res.ok) {
+        setToast({ type: 'success', message: 'Supplier ledger adjustment recorded successfully.' });
+        setShowAdjustmentModal(false);
+        fetchSuppliers();
+        if (selectedLedgerSupplier) fetchLedger(selectedLedgerSupplier, ledgerStartDate, ledgerEndDate);
+      } else {
+        const data = await res.json();
+        setToast({ type: 'error', message: data.error || 'Adjustment logging failed.' });
+      }
+    } catch (err) {
+      setToast({ type: 'error', message: 'Connection failure.' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handlePrintLedger = (supplier, transactions, opBalance, clBalance, startDate, endDate) => {
+    const totalDebits = transactions.filter(t => t.TransactionType === 'Debit').reduce((sum, t) => sum + parseFloat(t.Amount), 0);
+    const totalCredits = transactions.filter(t => t.TransactionType === 'Credit').reduce((sum, t) => sum + parseFloat(t.Amount), 0);
+    
+    setPrintLedgerData({
+      supplierName: supplier.SupplierName,
+      supplierCode: supplier.SupplierCode,
+      currentBalance: supplier.CurrentBalance,
+      creditLimit: supplier.CreditLimit,
+      openingBalance: opBalance,
+      closingBalance: clBalance,
+      transactions,
+      totalDebits,
+      totalCredits,
+      period: startDate && endDate ? `${startDate} to ${endDate}` : startDate ? `From ${startDate}` : endDate ? `To ${endDate}` : 'All-Time',
+      branch: user?.branchName || 'Global'
+    });
+    
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  };
+
+  const fetchLedger = async (supplierId, startDate = ledgerStartDate, endDate = ledgerEndDate) => {
     if (!supplierId) return;
     try {
       setLoading(true);
-      const res = await fetch(`${API_URL}/api/suppliers/ledger/${supplierId}`, {
+      let url = `${API_URL}/api/suppliers/ledger/${supplierId}?`;
+      if (startDate) url += `startDate=${startDate}&`;
+      if (endDate) url += `endDate=${endDate}&`;
+      
+      const res = await fetch(url, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
-        setLedgerTransactions(await res.json());
+        const data = await res.json();
+        setLedgerTransactions(data.transactions || []);
+        setLedgerOpeningBalance(data.openingBalance || 0);
+        setLedgerClosingBalance(data.closingBalance || 0);
+        
         const sup = suppliers.find(s => s.SupplierID === parseInt(supplierId, 10));
         if (sup) {
           setLedgerSummary({ balance: sup.CurrentBalance, creditLimit: sup.CreditLimit });
@@ -1585,7 +1720,12 @@ export default function Suppliers({ setToast }) {
         const res = await fetch(ledgerUrl, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (res.ok) setReportResult(await res.json());
+        if (res.ok) {
+          const data = await res.json();
+          setReportResult(data.transactions || []);
+          setReportOpeningBalance(data.openingBalance || 0);
+          setReportClosingBalance(data.closingBalance || 0);
+        }
       } catch (err) {
         console.error(err);
       } finally {
@@ -1635,8 +1775,15 @@ export default function Suppliers({ setToast }) {
       csvContent = "Code,Supplier Name,Company,Category,Status,Outstanding Balance,Credit Limit,Mobile\n" +
         reportResult.map(r => `"${r.SupplierCode}","${r.SupplierName}","${r.CompanyName || ''}","${r.SupplierCategory || ''}","${r.Status}",${r.CurrentBalance},${r.CreditLimit},"${r.MobileNumber || ''}"`).join("\n");
     } else if (selectedReportType === 'ledger') {
-      csvContent = "Date,Reference Type,Reference No,Debit (Paid/Return),Credit (Invoice),Running Balance,Description\n" +
-        reportResult.map(r => `"${new Date(r.TransactionDate).toLocaleDateString()}","${r.ReferenceType}","${r.ReferenceNumber || ''}",${r.TransactionType === 'Debit' ? r.Amount : 0.00},${r.TransactionType === 'Credit' ? r.Amount : 0.00},${r.RunningBalance},"${r.Description || ''}"`).join("\n");
+      csvContent = "Date,Reference No,Invoice No,Transaction Type,Debit,Credit,Balance\n" +
+        `"", "","","Opening Balance",0.00,0.00,${reportOpeningBalance}\n` +
+        reportResult.map(r => {
+          const { refNo, invoiceNo } = getLedgerRowDetails(r);
+          const deb = r.TransactionType === 'Debit' ? r.Amount : 0.00;
+          const cred = r.TransactionType === 'Credit' ? r.Amount : 0.00;
+          return `"${new Date(r.TransactionDate).toLocaleDateString()}","${refNo}","${invoiceNo}","${r.ReferenceType}",${deb},${cred},${r.RunningBalance}`;
+        }).join("\n") +
+        `\n"", "","","Closing Balance",0.00,0.00,${reportClosingBalance}`;
     } else if (selectedReportType === 'history') {
       csvContent = "PO Number,Date,Supplier,Amount,Status,GRN No,Invoice No,Payment Status\n" +
         reportResult.map(r => `"${r.PONumber}","${new Date(r.OrderDate).toLocaleDateString()}","${r.SupplierName}",${r.TotalAmount},"${r.Status}","${r.GRNNumber || ''}","${r.InvoiceNumber || ''}","${r.PaymentStatus}"`).join("\n");
@@ -2199,40 +2346,85 @@ export default function Suppliers({ setToast }) {
       {activeTab === 'ledger' && (
         <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
               <label className="form-label" style={{ marginBottom: 0 }}>Select Supplier:</label>
-              <select className="form-select" style={{ width: '250px' }} value={selectedLedgerSupplier} onChange={(e) => {
+              <select className="form-select" style={{ width: '220px' }} value={selectedLedgerSupplier} onChange={(e) => {
                 setSelectedLedgerSupplier(e.target.value);
-                fetchLedger(e.target.value);
+                fetchLedger(e.target.value, ledgerStartDate, ledgerEndDate);
               }}>
                 <option value="">-- Choose Supplier --</option>
                 {suppliers.map(s => (
                   <option key={s.SupplierID} value={s.SupplierID}>{s.SupplierName} ({s.SupplierCode})</option>
                 ))}
               </select>
+
+              <label className="form-label" style={{ marginBottom: 0, marginLeft: '10px' }}>Start Date:</label>
+              <input type="date" className="form-input" style={{ width: '145px' }} value={ledgerStartDate} onChange={(e) => {
+                setLedgerStartDate(e.target.value);
+                if (selectedLedgerSupplier) fetchLedger(selectedLedgerSupplier, e.target.value, ledgerEndDate);
+              }} />
+
+              <label className="form-label" style={{ marginBottom: 0, marginLeft: '10px' }}>End Date:</label>
+              <input type="date" className="form-input" style={{ width: '145px' }} value={ledgerEndDate} onChange={(e) => {
+                setLedgerEndDate(e.target.value);
+                if (selectedLedgerSupplier) fetchLedger(selectedLedgerSupplier, ledgerStartDate, e.target.value);
+              }} />
+
+              <button className="btn btn-secondary" onClick={() => {
+                setLedgerStartDate('');
+                setLedgerEndDate('');
+                if (selectedLedgerSupplier) fetchLedger(selectedLedgerSupplier, '', '');
+              }}>Clear Dates</button>
             </div>
             
-            {canViewFinancials && (
-              <button className="btn btn-primary" onClick={handleOpenPaymentModal}>
-                Record Settlement Payment
-              </button>
-            )}
+            <div style={{ display: 'flex', gap: '10px' }}>
+              {selectedLedgerSupplier && (
+                <button className="btn btn-secondary" onClick={() => {
+                  const sup = suppliers.find(s => s.SupplierID === parseInt(selectedLedgerSupplier, 10));
+                  if (sup) handlePrintLedger(sup, ledgerTransactions, ledgerOpeningBalance, ledgerClosingBalance, ledgerStartDate, ledgerEndDate);
+                }}>
+                  <Printer size={14} style={{ marginRight: '6px' }} /> Print Ledger
+                </button>
+              )}
+              {canViewFinancials && (
+                <>
+                  <button className="btn btn-secondary" onClick={handleOpenAdjustmentModal}>
+                    Record Debit/Credit Note
+                  </button>
+                  <button className="btn btn-primary" onClick={handleOpenPaymentModal}>
+                    Record Settlement Payment
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {selectedLedgerSupplier ? (
             <>
               {/* Ledger Summary Stats */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
                 <div className="glass-panel" style={{ padding: '20px' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Outstanding Balance Owed</div>
-                  <div style={{ fontSize: '28px', fontWeight: '800', color: ledgerSummary.balance > 0 ? 'var(--warning)' : 'var(--text-primary)', marginTop: '4px' }}>
+                  <div style={{ fontSize: '24px', fontWeight: '800', color: ledgerSummary.balance > 0 ? 'var(--warning)' : 'var(--text-primary)', marginTop: '4px' }}>
                     Rs. {Number(ledgerSummary.balance).toFixed(2)}
                   </div>
                 </div>
                 <div className="glass-panel" style={{ padding: '20px' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Assigned Credit Limit</div>
-                  <div style={{ fontSize: '28px', fontWeight: '800', color: 'var(--accent)', marginTop: '4px' }}>
+                  <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--accent)', marginTop: '4px' }}>
                     Rs. {Number(ledgerSummary.creditLimit).toFixed(2)}
+                  </div>
+                </div>
+                <div className="glass-panel" style={{ padding: '20px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Period Opening Balance</div>
+                  <div style={{ fontSize: '24px', fontWeight: '800', color: ledgerOpeningBalance > 0 ? 'var(--warning)' : 'var(--text-primary)', marginTop: '4px' }}>
+                    Rs. {Number(ledgerOpeningBalance).toFixed(2)}
+                  </div>
+                </div>
+                <div className="glass-panel" style={{ padding: '20px' }}>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Period Closing Balance</div>
+                  <div style={{ fontSize: '24px', fontWeight: '800', color: ledgerClosingBalance > 0 ? 'var(--warning)' : 'var(--text-primary)', marginTop: '4px' }}>
+                    Rs. {Number(ledgerClosingBalance).toFixed(2)}
                   </div>
                 </div>
               </div>
@@ -2245,33 +2437,36 @@ export default function Suppliers({ setToast }) {
                     <thead>
                       <tr>
                         <th>Date</th>
-                        <th>Reference</th>
-                        <th>Reference No.</th>
-                        <th>Debit (Paid/Returned)</th>
-                        <th>Credit (Invoiced)</th>
-                        <th>Running Balance</th>
-                        <th>Description</th>
+                        <th>Reference No</th>
+                        <th>Invoice No</th>
+                        <th>Transaction Type</th>
+                        <th style={{ textAlign: 'right' }}>Debit</th>
+                        <th style={{ textAlign: 'right' }}>Credit</th>
+                        <th style={{ textAlign: 'right' }}>Balance</th>
                       </tr>
                     </thead>
                     <tbody>
                       {ledgerTransactions.length === 0 ? (
                         <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>No ledger statements posted.</td></tr>
                       ) : (
-                        ledgerTransactions.map((tx) => (
-                          <tr key={tx.LedgerID}>
-                            <td>{new Date(tx.TransactionDate).toLocaleDateString()}</td>
-                            <td style={{ fontWeight: '600' }}>{tx.ReferenceType}</td>
-                            <td className="mono">{tx.ReferenceNumber || '--'}</td>
-                            <td className="mono" style={{ color: tx.TransactionType === 'Debit' ? 'var(--success)' : 'inherit' }}>
-                              {tx.TransactionType === 'Debit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
-                            </td>
-                            <td className="mono" style={{ color: tx.TransactionType === 'Credit' ? 'var(--warning)' : 'inherit' }}>
-                              {tx.TransactionType === 'Credit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
-                            </td>
-                            <td className="mono" style={{ fontWeight: '700' }}>Rs. {Number(tx.RunningBalance).toFixed(2)}</td>
-                            <td style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{tx.Description}</td>
-                          </tr>
-                        ))
+                        ledgerTransactions.map((tx, idx) => {
+                          const { refNo, invoiceNo } = getLedgerRowDetails(tx);
+                          return (
+                            <tr key={tx.LedgerID || idx}>
+                              <td>{new Date(tx.TransactionDate).toLocaleDateString()}</td>
+                              <td className="mono">{refNo}</td>
+                              <td className="mono">{invoiceNo}</td>
+                              <td style={{ fontWeight: '600' }}>{tx.ReferenceType}</td>
+                              <td className="mono" style={{ textAlign: 'right', color: tx.TransactionType === 'Debit' ? 'var(--success)' : 'inherit' }}>
+                                {tx.TransactionType === 'Debit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
+                              </td>
+                              <td className="mono" style={{ textAlign: 'right', color: tx.TransactionType === 'Credit' ? 'var(--warning)' : 'inherit' }}>
+                                {tx.TransactionType === 'Credit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
+                              </td>
+                              <td className="mono" style={{ textAlign: 'right', fontWeight: '700' }}>Rs. {Number(tx.RunningBalance).toFixed(2)}</td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -2378,11 +2573,12 @@ export default function Suppliers({ setToast }) {
                     ) : selectedReportType === 'ledger' ? (
                       <tr>
                         <th>Date</th>
-                        <th>Reference</th>
-                        <th>Debit (Payments)</th>
-                        <th>Credit (Invoices)</th>
-                        <th>Running Balance</th>
-                        <th>Description</th>
+                        <th>Reference No</th>
+                        <th>Invoice No</th>
+                        <th>Transaction Type</th>
+                        <th style={{ textAlign: 'right' }}>Debit</th>
+                        <th style={{ textAlign: 'right' }}>Credit</th>
+                        <th style={{ textAlign: 'right' }}>Balance</th>
                       </tr>
                     ) : (
                       <tr>
@@ -2412,20 +2608,34 @@ export default function Suppliers({ setToast }) {
                         </tr>
                       ))
                     ) : selectedReportType === 'ledger' ? (
-                      reportResult.map(r => (
-                        <tr key={r.LedgerID}>
-                          <td>{new Date(r.TransactionDate).toLocaleDateString()}</td>
-                          <td>{r.ReferenceType} ({r.ReferenceNumber || 'N/A'})</td>
-                          <td className="mono" style={{ color: r.TransactionType === 'Debit' ? 'var(--success)' : 'inherit' }}>
-                            {r.TransactionType === 'Debit' ? `Rs. ${Number(r.Amount).toFixed(2)}` : '--'}
-                          </td>
-                          <td className="mono" style={{ color: r.TransactionType === 'Credit' ? 'var(--warning)' : 'inherit' }}>
-                            {r.TransactionType === 'Credit' ? `Rs. ${Number(r.Amount).toFixed(2)}` : '--'}
-                          </td>
-                          <td className="mono" style={{ fontWeight: '700' }}>Rs. {Number(r.RunningBalance).toFixed(2)}</td>
-                          <td>{r.Description}</td>
+                      <>
+                        <tr style={{ background: 'rgba(255, 255, 255, 0.05)', fontWeight: 'bold' }}>
+                          <td colSpan={6}>Opening Balance</td>
+                          <td className="mono" style={{ textAlign: 'right' }}>Rs. {Number(reportOpeningBalance).toFixed(2)}</td>
                         </tr>
-                      ))
+                        {reportResult.map((r, idx) => {
+                          const { refNo, invoiceNo } = getLedgerRowDetails(r);
+                          return (
+                            <tr key={r.LedgerID || idx}>
+                              <td>{new Date(r.TransactionDate).toLocaleDateString()}</td>
+                              <td className="mono">{refNo}</td>
+                              <td className="mono">{invoiceNo}</td>
+                              <td style={{ fontWeight: '600' }}>{r.ReferenceType}</td>
+                              <td className="mono" style={{ textAlign: 'right', color: r.TransactionType === 'Debit' ? 'var(--success)' : 'inherit' }}>
+                                {r.TransactionType === 'Debit' ? `Rs. ${Number(r.Amount).toFixed(2)}` : '--'}
+                              </td>
+                              <td className="mono" style={{ textAlign: 'right', color: r.TransactionType === 'Credit' ? 'var(--warning)' : 'inherit' }}>
+                                {r.TransactionType === 'Credit' ? `Rs. ${Number(r.Amount).toFixed(2)}` : '--'}
+                              </td>
+                              <td className="mono" style={{ textAlign: 'right', fontWeight: '700' }}>Rs. {Number(r.RunningBalance).toFixed(2)}</td>
+                            </tr>
+                          );
+                        })}
+                        <tr style={{ background: 'rgba(255, 255, 255, 0.05)', fontWeight: 'bold' }}>
+                          <td colSpan={6}>Closing Balance</td>
+                          <td className="mono" style={{ textAlign: 'right' }}>Rs. {Number(reportClosingBalance).toFixed(2)}</td>
+                        </tr>
+                      </>
                     ) : (
                       reportResult.map(r => (
                         <tr key={r.PurchaseOrderID}>
@@ -2507,6 +2717,98 @@ export default function Suppliers({ setToast }) {
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
                   <span>Grand Total:</span>
                   <span>Rs. {Number(selectedPo.TotalAmount).toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================================
+         PRINT ONLY LEDGER STATEMENT VIEWER (Hides non-print with CSS)
+         ============================================================================ */}
+      {printLedgerData && (
+        <div className="printable-report" style={{ display: 'none' }}>
+          <div style={{ padding: '35px', background: '#fff', color: '#000', fontFamily: 'sans-serif' }}>
+            <h2 style={{ textAlign: 'center', margin: '0 0 5px 0', fontSize: '20px', fontWeight: 'bold' }}>SUPPLIER LEDGER STATEMENT</h2>
+            <div style={{ textAlign: 'center', fontSize: '11px', color: '#555', marginBottom: '20px' }}>
+              SellMax Pro Smart POS System
+            </div>
+            <hr style={{ border: '1px solid #000', margin: '10px 0' }} />
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', margin: '20px 0', fontSize: '13px' }}>
+              <div>
+                <strong>Supplier:</strong> {printLedgerData.supplierName}<br />
+                <strong>Code:</strong> {printLedgerData.supplierCode}<br />
+                <strong>Period:</strong> {printLedgerData.period || 'All-Time'}<br />
+                <strong>Branch:</strong> {printLedgerData.branch || 'Global'}
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <strong>Current Balance:</strong> Rs. {Number(printLedgerData.currentBalance).toFixed(2)}<br />
+                <strong>Credit Limit:</strong> Rs. {Number(printLedgerData.creditLimit).toFixed(2)}<br />
+                <strong>Statement Date:</strong> {new Date().toLocaleDateString()}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', background: '#f5f5f5', padding: '10px', fontWeight: 'bold', border: '1px solid #ddd', marginBottom: '10px', fontSize: '13px' }}>
+              <span>Opening Balance:</span>
+              <span>Rs. {Number(printLedgerData.openingBalance).toFixed(2)}</span>
+            </div>
+            
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px', fontSize: '12px' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #000', background: '#eaeaea' }}>
+                  <th style={{ textAlign: 'left', padding: '8px' }}>Date</th>
+                  <th style={{ textAlign: 'left', padding: '8px' }}>Reference No</th>
+                  <th style={{ textAlign: 'left', padding: '8px' }}>Invoice No</th>
+                  <th style={{ textAlign: 'left', padding: '8px' }}>Transaction Type</th>
+                  <th style={{ textAlign: 'right', padding: '8px' }}>Debit</th>
+                  <th style={{ textAlign: 'right', padding: '8px' }}>Credit</th>
+                  <th style={{ textAlign: 'right', padding: '8px' }}>Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {printLedgerData.transactions?.map((tx, idx) => {
+                  const { refNo, invoiceNo } = getLedgerRowDetails(tx);
+                  return (
+                    <tr key={tx.LedgerID || idx} style={{ borderBottom: '1px solid #ddd' }}>
+                      <td style={{ padding: '8px' }}>{new Date(tx.TransactionDate).toLocaleDateString()}</td>
+                      <td style={{ padding: '8px' }} className="mono">{refNo}</td>
+                      <td style={{ padding: '8px' }} className="mono">{invoiceNo}</td>
+                      <td style={{ padding: '8px', fontWeight: '600' }}>{tx.ReferenceType}</td>
+                      <td style={{ textAlign: 'right', padding: '8px' }} className="mono">
+                        {tx.TransactionType === 'Debit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
+                      </td>
+                      <td style={{ textAlign: 'right', padding: '8px' }} className="mono">
+                        {tx.TransactionType === 'Credit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
+                      </td>
+                      <td style={{ textAlign: 'right', padding: '8px', fontWeight: '700' }} className="mono">
+                        Rs. {Number(tx.RunningBalance).toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <div style={{ width: '300px', background: '#f5f5f5', padding: '10px', border: '1px solid #ddd' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+                  <span>Opening Balance:</span>
+                  <span>Rs. {Number(printLedgerData.openingBalance).toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'green', margin: '4px 0' }}>
+                  <span>Total Debits:</span>
+                  <span>Rs. {Number(printLedgerData.totalDebits).toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#b45309', margin: '4px 0' }}>
+                  <span>Total Credits:</span>
+                  <span>Rs. {Number(printLedgerData.totalCredits).toFixed(2)}</span>
+                </div>
+                <hr style={{ margin: '6px 0', borderColor: '#ccc' }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '13px' }}>
+                  <span>Closing Balance:</span>
+                  <span>Rs. {Number(printLedgerData.closingBalance).toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -4289,6 +4591,276 @@ export default function Suppliers({ setToast }) {
                     ) : (
                       <>💳 Record Payment Voucher</>
                     )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ============================================================================
+         MODAL: RECORD LEDGER ADJUSTMENT (DEBIT/CREDIT NOTE)
+         ============================================================================ */}
+      {showAdjustmentModal && (() => {
+        const selectedSupplier = suppliers.find(s => String(s.SupplierID) === String(adjustmentForm.supplierId));
+        const outstandingBalance = selectedSupplier ? Number(selectedSupplier.CurrentBalance) : 0;
+        const adjAmt = parseFloat(adjustmentForm.amount) || 0;
+        let balanceAfter = outstandingBalance;
+        if (adjustmentForm.effect === 'Debit') {
+          balanceAfter = outstandingBalance - adjAmt;
+        } else {
+          balanceAfter = outstandingBalance + adjAmt;
+        }
+
+        return (
+          <div className="modal-overlay no-print" onClick={(e) => e.target === e.currentTarget && setShowAdjustmentModal(false)}>
+            <div style={{
+              width: '520px',
+              background: 'linear-gradient(145deg, rgba(15,20,35,0.98) 0%, rgba(22,28,48,0.98) 100%)',
+              border: '1px solid rgba(139,92,246,0.25)',
+              borderRadius: '20px',
+              boxShadow: '0 32px 80px rgba(0,0,0,0.6), 0 0 40px rgba(139,92,246,0.1)',
+              overflow: 'hidden',
+              fontFamily: 'var(--font-sans)',
+            }}>
+              <form onSubmit={handleAdjustmentSubmit}>
+                {/* Header */}
+                <div style={{
+                  background: 'linear-gradient(135deg, rgba(139,92,246,0.3) 0%, rgba(6,182,212,0.15) 100%)',
+                  borderBottom: '1px solid rgba(139,92,246,0.2)',
+                  padding: '24px 28px 20px',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', position:'relative' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+                      <div style={{
+                        width:'36px', height:'36px', borderRadius:'10px',
+                        background:'linear-gradient(135deg,#8b5cf6,#06b6d4)',
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        fontSize:'18px', boxShadow:'0 4px 12px rgba(139,92,246,0.4)'
+                      }}>📝</div>
+                      <div>
+                        <div style={{ fontSize:'17px', fontWeight:'800', color:'#f8fafc', letterSpacing:'-0.3px' }}>Ledger Adjustment</div>
+                        <div style={{ fontSize:'11px', color:'rgba(148,163,184,0.9)', fontWeight:'500', textTransform:'uppercase', letterSpacing:'1px' }}>Debit / Credit Notes</div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign:'right' }}>
+                      <div style={{ fontSize:'11px', color:'rgba(148,163,184,0.7)', marginBottom:'2px' }}>DATE</div>
+                      <div style={{ fontSize:'13px', fontWeight:'700', color:'#f8fafc' }}>
+                        {adjustmentForm.date ? new Date(adjustmentForm.date).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '—'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div style={{ padding:'28px', display:'flex', flexDirection:'column', gap:'20px', background:'rgba(15,23,42,0.15)' }}>
+                  {/* Supplier Info Strip */}
+                  {selectedSupplier && (
+                    <div style={{
+                      display:'flex', justifyContent:'space-between', alignItems:'center',
+                      background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)',
+                      borderRadius:'12px', padding:'12px 16px'
+                    }}>
+                      <div>
+                        <div style={{ fontSize:'13px', fontWeight:'700', color:'#f8fafc' }}>{selectedSupplier.SupplierName}</div>
+                        <div style={{ fontSize:'11px', color:'rgba(148,163,184,0.6)', marginTop:'2px' }}>Code: {selectedSupplier.SupplierCode}</div>
+                      </div>
+                      <div style={{ textAlign:'right' }}>
+                        <div style={{ fontSize:'11px', color:'rgba(148,163,184,0.6)' }}>Outstanding Bal</div>
+                        <div style={{ fontSize:'14px', fontWeight:'800', color: outstandingBalance > 0 ? '#f59e0b' : '#38bdf8', marginTop:'2px' }}>
+                          Rs. {outstandingBalance.toFixed(2)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Supplier Dropdown Selector if not selected */}
+                  {!selectedLedgerSupplier && (
+                    <div>
+                      <label style={{ fontSize:'11px', fontWeight:'700', color:'rgba(148,163,184,0.8)', textTransform:'uppercase', display:'block', marginBottom:'6px' }}>
+                        Select Supplier
+                      </label>
+                      <select
+                        className="form-select"
+                        value={adjustmentForm.supplierId}
+                        onChange={(e) => setAdjustmentForm(prev => ({ ...prev, supplierId: e.target.value }))}
+                        required
+                        style={{ borderRadius:'10px' }}
+                      >
+                        <option value="">-- Choose Supplier --</option>
+                        {suppliers.map(s => (
+                          <option key={s.SupplierID} value={s.SupplierID}>{s.SupplierName}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Date + Ref No */}
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                    <div>
+                      <label style={{ fontSize:'11px', fontWeight:'700', color:'rgba(148,163,184,0.8)', textTransform:'uppercase', display:'block', marginBottom:'6px' }}>
+                        Date
+                      </label>
+                      <input
+                        type="date" className="form-input"
+                        value={adjustmentForm.date}
+                        onChange={(e) => setAdjustmentForm(prev => ({ ...prev, date: e.target.value }))}
+                        style={{ borderRadius:'10px' }}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize:'11px', fontWeight:'700', color:'rgba(148,163,184,0.8)', textTransform:'uppercase', display:'block', marginBottom:'6px' }}>
+                        Ref / Document No.
+                      </label>
+                      <input
+                        type="text" className="form-input"
+                        value={adjustmentForm.referenceNumber}
+                        onChange={(e) => setAdjustmentForm(prev => ({ ...prev, referenceNumber: e.target.value }))}
+                        placeholder="DN-001 / CN-001"
+                        style={{ borderRadius:'10px' }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Type Selector (Debit Note or Credit Note) */}
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                    <div>
+                      <label style={{ fontSize:'11px', fontWeight:'700', color:'rgba(148,163,184,0.8)', textTransform:'uppercase', display:'block', marginBottom:'6px' }}>
+                        Adjustment Type
+                      </label>
+                      <select
+                        className="form-select"
+                        value={adjustmentForm.adjustmentType}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setAdjustmentForm(prev => ({
+                            ...prev,
+                            adjustmentType: val,
+                            effect: 'Debit' 
+                          }));
+                        }}
+                        style={{ borderRadius:'10px' }}
+                        required
+                      >
+                        <option value="Debit Note">Debit Note</option>
+                        <option value="Credit Note">Credit Note</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={{ fontSize:'11px', fontWeight:'700', color:'rgba(148,163,184,0.8)', textTransform:'uppercase', display:'block', marginBottom:'6px' }}>
+                        Adjustment Effect
+                      </label>
+                      <select
+                        className="form-select"
+                        value={adjustmentForm.effect}
+                        onChange={(e) => setAdjustmentForm(prev => ({ ...prev, effect: e.target.value }))}
+                        style={{ borderRadius:'10px' }}
+                        required
+                      >
+                        <option value="Debit">Reduce Balance (Debit)</option>
+                        <option value="Credit">Increase Balance (Credit)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Amount + Branch */}
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
+                    <div>
+                      <label style={{ fontSize:'11px', fontWeight:'700', color:'rgba(148,163,184,0.8)', textTransform:'uppercase', display:'block', marginBottom:'6px' }}>
+                        Amount (Rs.)
+                      </label>
+                      <input
+                        type="number" step="0.01" className="form-input"
+                        value={adjustmentForm.amount}
+                        onChange={(e) => setAdjustmentForm(prev => ({ ...prev, amount: e.target.value }))}
+                        placeholder="0.00"
+                        style={{ borderRadius:'10px', fontWeight:'700', fontFamily:'var(--font-mono)', color:'#38bdf8' }}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize:'11px', fontWeight:'700', color:'rgba(148,163,184,0.8)', textTransform:'uppercase', display:'block', marginBottom:'6px' }}>
+                        Branch
+                      </label>
+                      <select
+                        className="form-select"
+                        value={adjustmentForm.branchName}
+                        onChange={(e) => setAdjustmentForm(prev => ({ ...prev, branchName: e.target.value }))}
+                        style={{ borderRadius:'10px' }}
+                      >
+                        <option value="Main Store">Main Store</option>
+                        <option value="Colombo Branch">Colombo Branch</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Narration */}
+                  <div>
+                    <label style={{ fontSize:'11px', fontWeight:'700', color:'rgba(148,163,184,0.8)', textTransform:'uppercase', display:'block', marginBottom:'6px' }}>
+                      Narration / Description
+                    </label>
+                    <input
+                      type="text" className="form-input"
+                      value={adjustmentForm.notes}
+                      onChange={(e) => setAdjustmentForm(prev => ({ ...prev, notes: e.target.value }))}
+                      placeholder="e.g. Damage claim / Price difference adjustment"
+                      style={{ borderRadius:'10px' }}
+                      required
+                    />
+                  </div>
+
+                  {/* Future Preview */}
+                  <div style={{
+                    padding:'12px 16px', background:'rgba(0,0,0,0.2)', border:'1px solid rgba(255,255,255,0.05)',
+                    borderRadius:'12px', fontSize:'12px', color:'rgba(148,163,184,0.9)'
+                  }}>
+                    <div style={{ display:'flex', justifyContent:'space-between' }}>
+                      <span>New Projected Balance:</span>
+                      <span style={{ fontWeight:'700', color: balanceAfter > 0 ? '#f59e0b' : '#38bdf8' }}>
+                        Rs. {balanceAfter.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div style={{
+                  padding:'18px 28px',
+                  borderTop:'1px solid rgba(255,255,255,0.07)',
+                  background:'rgba(0,0,0,0.2)',
+                  display:'flex', justifyContent:'space-between', alignItems:'center', gap:'12px'
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowAdjustmentModal(false)}
+                    style={{
+                      padding:'10px 22px', borderRadius:'10px', border:'1px solid rgba(255,255,255,0.12)',
+                      background:'transparent', color:'rgba(148,163,184,0.8)',
+                      fontSize:'13px', fontWeight:'600', cursor:'pointer',
+                      transition:'all 0.2s',
+                    }}
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={actionLoading}
+                    style={{
+                      flex:1, padding:'12px 24px', borderRadius:'10px', border:'none',
+                      background: actionLoading ? 'rgba(139,92,246,0.4)' : 'linear-gradient(135deg,#8b5cf6,#06b6d4)',
+                      color:'#fff', fontSize:'14px', fontWeight:'700', cursor: actionLoading ? 'not-allowed' : 'pointer',
+                      boxShadow: actionLoading ? 'none' : '0 4px 20px rgba(139,92,246,0.35)',
+                      transition:'all 0.2s',
+                      display:'flex', alignItems:'center', justifyContent:'center', gap:'8px'
+                    }}
+                  >
+                    {actionLoading ? 'Processing...' : `✔ Save ${adjustmentForm.adjustmentType}`}
                   </button>
                 </div>
               </form>

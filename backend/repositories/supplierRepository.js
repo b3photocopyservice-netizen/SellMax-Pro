@@ -1399,29 +1399,133 @@ class SupplierRepository {
 
   // --- LEDGER STATS ---
 
+  // --- LEDGER STATS ---
+
   async getSupplierLedger(supplierId, companyId, filters = {}) {
+    const { startDate, endDate, branchName } = filters;
+
+    // 1. Calculate Opening Balance before startDate (if startDate provided)
+    let openingBalance = 0;
+    if (startDate) {
+      let opQuery = `
+        SELECT SUM(CASE WHEN TransactionType = 'Credit' THEN Amount ELSE -Amount END) AS OpBalance
+        FROM dbo.SupplierLedger
+        WHERE SupplierID = @SupplierID AND CompanyID = @CompanyID AND TransactionDate < @StartDate
+      `;
+      const opParams = { SupplierID: supplierId, CompanyID: companyId, StartDate: startDate };
+      if (branchName) {
+        opQuery += ` AND (BranchName = @BranchName OR BranchName IS NULL)`;
+        opParams.BranchName = branchName;
+      }
+      const opResult = await db.query(opQuery, opParams);
+      openingBalance = parseFloat(opResult.recordset[0]?.OpBalance || 0);
+    }
+
+    // 2. Fetch the transactions in the date range
     let sqlQuery = `
       SELECT * FROM dbo.SupplierLedger
       WHERE SupplierID = @SupplierID AND CompanyID = @CompanyID
     `;
     const params = { SupplierID: supplierId, CompanyID: companyId };
 
-    if (filters.branchName) {
+    if (branchName) {
       sqlQuery += ` AND (BranchName = @BranchName OR BranchName IS NULL)`;
-      params.BranchName = filters.branchName;
+      params.BranchName = branchName;
     }
-    if (filters.startDate) {
+    if (startDate) {
       sqlQuery += ` AND TransactionDate >= @StartDate`;
-      params.StartDate = filters.startDate;
+      params.StartDate = startDate;
     }
-    if (filters.endDate) {
+    if (endDate) {
+      // Set EndDate to end of day to include all transactions on that day
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
       sqlQuery += ` AND TransactionDate <= @EndDate`;
-      params.EndDate = filters.endDate;
+      params.EndDate = end;
     }
 
     sqlQuery += ` ORDER BY TransactionDate ASC, LedgerID ASC`;
     const result = await db.query(sqlQuery, params);
-    return result.recordset;
+    const rawTx = result.recordset;
+
+    // 3. Calculate Running Balances starting from openingBalance
+    let currentRunning = openingBalance;
+    const transactions = rawTx.map(tx => {
+      const amt = parseFloat(tx.Amount);
+      if (tx.TransactionType === 'Credit') {
+        currentRunning += amt;
+      } else {
+        currentRunning -= amt;
+      }
+      return {
+        ...tx,
+        RunningBalance: currentRunning
+      };
+    });
+
+    const closingBalance = currentRunning;
+
+    return {
+      openingBalance,
+      transactions,
+      closingBalance
+    };
+  }
+
+  async createLedgerAdjustment(companyId, userId, data) {
+    const amount = parseFloat(data.amount);
+    const supplierId = parseInt(data.supplierId, 10);
+    const txType = data.effect; // 'Debit' or 'Credit'
+    const refType = data.adjustmentType; // 'Debit Note' or 'Credit Note'
+    const refNum = data.referenceNumber?.trim() || (refType === 'Debit Note' ? 'DN-' : 'CN-') + Date.now().toString().slice(-8);
+    const notes = data.notes?.trim() || `${refType} adjustment`;
+    const branchName = data.branchName || null;
+    const transactionDate = data.date ? new Date(data.date) : new Date();
+
+    // 1. Update outstanding balance in Suppliers
+    if (txType === 'Debit') {
+      await db.query(`
+        UPDATE dbo.Suppliers
+        SET CurrentBalance = CurrentBalance - @Amount
+        WHERE SupplierID = @SupplierID AND CompanyID = @CompanyID
+      `, { Amount: amount, SupplierID: supplierId, CompanyID: companyId });
+    } else {
+      await db.query(`
+        UPDATE dbo.Suppliers
+        SET CurrentBalance = CurrentBalance + @Amount
+        WHERE SupplierID = @SupplierID AND CompanyID = @CompanyID
+      `, { Amount: amount, SupplierID: supplierId, CompanyID: companyId });
+    }
+
+    // 2. Fetch latest balance for ledger entry
+    const latestBalanceResult = await db.query(`
+      SELECT CurrentBalance FROM dbo.Suppliers WHERE SupplierID = @SupplierID
+    `, { SupplierID: supplierId });
+    const runningBalance = parseFloat(latestBalanceResult.recordset[0].CurrentBalance);
+
+    // 3. Log ledger entry
+    await db.query(`
+      INSERT INTO dbo.SupplierLedger (
+        CompanyID, SupplierID, TransactionType, ReferenceType, ReferenceNumber, 
+        Amount, RunningBalance, Description, BranchName, TransactionDate
+      ) VALUES (
+        @CompanyID, @SupplierID, @TxType, @RefType, @RefNum, 
+        @Amount, @RunningBalance, @Description, @BranchName, @TransactionDate
+      )
+    `, {
+      CompanyID: companyId,
+      SupplierID: supplierId,
+      TxType: txType,
+      RefType: refType,
+      RefNum: refNum,
+      Amount: amount,
+      RunningBalance: runningBalance,
+      Description: notes,
+      BranchName: branchName,
+      TransactionDate: transactionDate
+    });
+
+    return { referenceNumber: refNum, transactionDate };
   }
 
   // --- WIDGET STATS ---

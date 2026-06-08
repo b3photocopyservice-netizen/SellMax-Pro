@@ -1186,10 +1186,13 @@ body {
   body * {
     visibility: hidden;
   }
-  .printable-receipt-modal, .printable-receipt-modal * {
+  .printable-receipt-modal, .printable-receipt-modal *,
+  .printable-report, .printable-report * {
     visibility: visible;
   }
-  .printable-receipt-modal {
+  .printable-receipt-modal,
+  .printable-report {
+    display: block !important;
     position: absolute;
     left: 0;
     top: 0;
