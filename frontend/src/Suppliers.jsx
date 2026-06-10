@@ -169,6 +169,7 @@ export default function Suppliers({ setToast }) {
   const [reportPeriodType, setReportPeriodType] = useState('monthly'); // 'monthly', 'custom'
   const [reportMonthSelect, setReportMonthSelect] = useState('this-month'); // 'this-month', 'last-month', 'last-30', 'last-90'
   const [printStatementData, setPrintStatementData] = useState(null);
+  const [printGenericReportData, setPrintGenericReportData] = useState(null);
 
   // 9. Purchase Manager Sub-tabs
   const [purchaseSubTab, setPurchaseSubTab] = useState('orders'); // 'orders', 'grninvoice', 'returns'
@@ -2084,6 +2085,15 @@ export default function Suppliers({ setToast }) {
   };
 
   const handlePrintReport = () => {
+    // Clear conflicting states depending on the tab context
+    if (activeTab === 'reports') {
+      setSelectedPo(null);
+    } else if (activeTab === 'purchases') {
+      setPrintLedgerData(null);
+      setPrintStatementData(null);
+      setPrintGenericReportData(null);
+    }
+
     if (selectedReportType === 'statement') {
       const supplier = suppliers.find(s => String(s.SupplierID) === String(reportSupplierId));
       const { start, end } = computePeriodDates();
@@ -2112,6 +2122,128 @@ export default function Suppliers({ setToast }) {
         period: start && end ? `${start} to ${end}` : 'All-Time'
       });
       
+      setPrintLedgerData(null);
+      setPrintGenericReportData(null);
+
+      setTimeout(() => {
+        window.print();
+      }, 150);
+    } else if (selectedReportType === 'ledger') {
+      const supplier = suppliers.find(s => String(s.SupplierID) === String(reportSupplierId));
+      const { start, end } = computePeriodDates();
+      const transactions = reportResult;
+      const totalDebits = transactions.filter(t => t.TransactionType === 'Debit').reduce((sum, t) => sum + parseFloat(t.Amount || 0), 0);
+      const totalCredits = transactions.filter(t => t.TransactionType === 'Credit').reduce((sum, t) => sum + parseFloat(t.Amount || 0), 0);
+      
+      setPrintLedgerData({
+        supplierName: supplier ? supplier.SupplierName : '--',
+        supplierCode: supplier ? supplier.SupplierCode : '--',
+        currentBalance: supplier ? supplier.CurrentBalance : 0,
+        creditLimit: supplier ? supplier.CreditLimit : 0,
+        openingBalance: reportOpeningBalance,
+        closingBalance: reportClosingBalance,
+        transactions,
+        totalDebits,
+        totalCredits,
+        period: start && end ? `${start} to ${end}` : 'All-Time',
+        branch: reportBranch || 'Global'
+      });
+
+      setPrintStatementData(null);
+      setPrintGenericReportData(null);
+
+      setTimeout(() => {
+        window.print();
+      }, 150);
+    } else if (selectedReportType === 'list') {
+      setPrintGenericReportData({
+        title: 'SUPPLIER CONTACT DIRECTORY',
+        branch: reportBranch || 'All Branches',
+        columns: [
+          { label: 'Code', key: 'SupplierCode', mono: true, bold: true },
+          { label: 'Supplier', key: 'SupplierName', bold: true },
+          { label: 'Contact Email', key: 'EmailAddress' },
+          { label: 'Phone', key: 'MobileNumber' },
+          { label: 'Credit Limit', key: 'CreditLimit', align: 'right', mono: true },
+          { label: 'Outstanding Payables', key: 'CurrentBalance', align: 'right', mono: true },
+          { label: 'Category', key: 'SupplierCategory' }
+        ],
+        rows: reportResult.map(r => ({
+          SupplierCode: r.SupplierCode,
+          SupplierName: r.SupplierName,
+          EmailAddress: r.EmailAddress || '--',
+          MobileNumber: r.MobileNumber || '--',
+          CreditLimit: `Rs. ${Number(r.CreditLimit).toFixed(2)}`,
+          CurrentBalance: `Rs. ${Number(r.CurrentBalance).toFixed(2)}`,
+          SupplierCategory: r.SupplierCategory || '--'
+        }))
+      });
+
+      setPrintStatementData(null);
+      setPrintLedgerData(null);
+
+      setTimeout(() => {
+        window.print();
+      }, 150);
+    } else if (selectedReportType === 'payables') {
+      setPrintGenericReportData({
+        title: 'OUTSTANDING PAYABLES STATEMENT',
+        branch: reportBranch || 'All Branches',
+        columns: [
+          { label: 'Code', key: 'SupplierCode', mono: true, bold: true },
+          { label: 'Supplier', key: 'SupplierName', bold: true },
+          { label: 'Contact Email', key: 'EmailAddress' },
+          { label: 'Phone', key: 'MobileNumber' },
+          { label: 'Credit Limit', key: 'CreditLimit', align: 'right', mono: true },
+          { label: 'Outstanding Payables', key: 'CurrentBalance', align: 'right', mono: true },
+          { label: 'Category', key: 'SupplierCategory' }
+        ],
+        rows: reportResult.map(r => ({
+          SupplierCode: r.SupplierCode,
+          SupplierName: r.SupplierName,
+          EmailAddress: r.EmailAddress || '--',
+          MobileNumber: r.MobileNumber || '--',
+          CreditLimit: `Rs. ${Number(r.CreditLimit).toFixed(2)}`,
+          CurrentBalance: `Rs. ${Number(r.CurrentBalance).toFixed(2)}`,
+          SupplierCategory: r.SupplierCategory || '--'
+        }))
+      });
+
+      setPrintStatementData(null);
+      setPrintLedgerData(null);
+
+      setTimeout(() => {
+        window.print();
+      }, 150);
+    } else if (selectedReportType === 'history') {
+      const { start, end } = computePeriodDates();
+      setPrintGenericReportData({
+        title: 'PURCHASE HISTORY SUMMARY',
+        period: start && end ? `${start} to ${end}` : 'All-Time',
+        branch: reportBranch || 'All Branches',
+        columns: [
+          { label: 'PO Number', key: 'PONumber', mono: true, bold: true },
+          { label: 'Supplier', key: 'SupplierName', bold: true },
+          { label: 'Date', key: 'OrderDate' },
+          { label: 'Amount', key: 'TotalAmount', align: 'right', mono: true },
+          { label: 'PO Status', key: 'Status' },
+          { label: 'Invoice No', key: 'InvoiceNumber', mono: true },
+          { label: 'Payment', key: 'PaymentStatus' }
+        ],
+        rows: reportResult.map(r => ({
+          PONumber: r.PONumber,
+          SupplierName: r.SupplierName,
+          OrderDate: new Date(r.OrderDate).toLocaleDateString(),
+          TotalAmount: `Rs. ${Number(r.TotalAmount).toFixed(2)}`,
+          Status: r.Status,
+          InvoiceNumber: r.InvoiceNumber || '--',
+          PaymentStatus: r.PaymentStatus || '--'
+        }))
+      });
+
+      setPrintStatementData(null);
+      setPrintLedgerData(null);
+
       setTimeout(() => {
         window.print();
       }, 150);
@@ -3522,6 +3654,51 @@ export default function Suppliers({ setToast }) {
             <div style={{ marginTop: '40px', fontSize: '9px', color: '#64748b', textAlign: 'center', borderTop: '1px dashed #cbd5e1', paddingTop: '15px' }}>
               This is a system-generated statement. Please notify us of any discrepancies within 7 days. Thank you for your business!
             </div>
+          </div>
+        </div>
+      )}
+
+      {printGenericReportData && (
+        <div className="printable-report" style={{ display: 'none' }}>
+          <div style={{ padding: '15mm', background: '#fff', color: '#000', fontFamily: 'sans-serif', maxWidth: '210mm', margin: '0 auto', boxSizing: 'border-box' }}>
+            <h2 style={{ textAlign: 'center', margin: '0 0 5px 0', fontSize: '20px', fontWeight: 'bold' }}>{printGenericReportData.title}</h2>
+            <div style={{ textAlign: 'center', fontSize: '11px', color: '#555', marginBottom: '20px' }}>
+              SellMax Pro Smart POS System
+            </div>
+            <hr style={{ border: '1px solid #000', margin: '10px 0' }} />
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', margin: '20px 0', fontSize: '13px' }}>
+              <div>
+                {printGenericReportData.period && (
+                  <><strong>Period:</strong> {printGenericReportData.period}<br /></>
+                )}
+                <strong>Branch:</strong> {printGenericReportData.branch}
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <strong>Report Date:</strong> {new Date().toLocaleDateString()}
+              </div>
+            </div>
+
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px', fontSize: '12px' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #000', background: '#eaeaea' }}>
+                  {printGenericReportData.columns.map((col, idx) => (
+                    <th key={idx} style={{ textAlign: col.align || 'left', padding: '8px' }}>{col.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {printGenericReportData.rows.map((row, idx) => (
+                  <tr key={idx} style={{ borderBottom: '1px solid #ddd' }}>
+                    {printGenericReportData.columns.map((col, colIdx) => (
+                      <td key={colIdx} style={{ padding: '8px', textAlign: col.align || 'left', fontWeight: col.bold ? 'bold' : 'normal' }} className={col.mono ? 'mono' : ''}>
+                        {row[col.key]}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
