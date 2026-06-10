@@ -3226,7 +3226,7 @@ export default function Suppliers({ setToast }) {
          ============================================================================ */}
       {selectedPo && (
         <div className="printable-report" style={{ display: 'none' }}>
-          <div style={{ padding: '30px', background: '#fff', color: '#000', fontFamily: 'monospace' }}>
+          <div style={{ padding: '15mm', background: '#fff', color: '#000', fontFamily: 'monospace', maxWidth: '210mm', margin: '0 auto', boxSizing: 'border-box' }}>
             <h2 style={{ textAlign: 'center' }}>PURCHASE ORDER VOUCHER</h2>
             <hr style={{ borderStyle: 'dashed' }} />
             <div style={{ display: 'flex', justifyContent: 'space-between', margin: '20px 0' }}>
@@ -3292,7 +3292,7 @@ export default function Suppliers({ setToast }) {
          ============================================================================ */}
       {printLedgerData && (
         <div className="printable-report" style={{ display: 'none' }}>
-          <div style={{ padding: '35px', background: '#fff', color: '#000', fontFamily: 'sans-serif' }}>
+          <div style={{ padding: '15mm', background: '#fff', color: '#000', fontFamily: 'sans-serif', maxWidth: '210mm', margin: '0 auto', boxSizing: 'border-box' }}>
             <h2 style={{ textAlign: 'center', margin: '0 0 5px 0', fontSize: '20px', fontWeight: 'bold' }}>SUPPLIER LEDGER STATEMENT</h2>
             <div style={{ textAlign: 'center', fontSize: '11px', color: '#555', marginBottom: '20px' }}>
               SellMax Pro Smart POS System
@@ -3384,7 +3384,7 @@ export default function Suppliers({ setToast }) {
          ============================================================================ */}
       {printStatementData && (
         <div className="printable-report" style={{ display: 'none' }}>
-          <div style={{ padding: '35px', background: '#fff', color: '#000', fontFamily: 'sans-serif' }}>
+          <div style={{ padding: '15mm', background: '#fff', color: '#000', fontFamily: 'sans-serif', maxWidth: '210mm', margin: '0 auto', boxSizing: 'border-box' }}>
             {/* Header Block */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #334155', paddingBottom: '15px' }}>
               <div>

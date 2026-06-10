@@ -1202,9 +1202,29 @@ body {
     box-shadow: none;
     background: white;
   }
-  /* Avoid headers/footers default browser inserts */
+  /* A4 paper: 210mm × 297mm with 15mm margins */
   @page {
-    margin: 0;
+    size: A4 portrait;
+    margin: 15mm 15mm 15mm 15mm;
+  }
+  /* Ensure report content fills the A4 printable area */
+  .printable-report > div {
+    width: 100% !important;
+    max-width: 180mm !important;
+    margin: 0 auto !important;
+    box-sizing: border-box !important;
+    font-size: 11px !important;
+  }
+  /* Avoid page breaks inside table rows */
+  .printable-report tr {
+    page-break-inside: avoid;
+  }
+  /* Keep table headers on every page */
+  .printable-report thead {
+    display: table-header-group;
+  }
+  .printable-report tfoot {
+    display: table-footer-group;
   }
 }
 
