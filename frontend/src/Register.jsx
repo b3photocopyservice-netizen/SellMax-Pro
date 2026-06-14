@@ -3,6 +3,31 @@ import { useCart } from './contexts/CartContext';
 import { useAuth } from './contexts/AuthContext';
 import { Search, Plus, Minus, Trash2, FolderMinus, UserPlus, CreditCard, RefreshCw, ShoppingCart, Lock, DollarSign, Printer, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
 
+// Card Brand Logos for POS Checkout
+const VisaLogo = () => (
+  <img 
+    src="https://upload.wikimedia.org/wikipedia/commons/d/d6/Visa_2021.svg" 
+    alt="Visa" 
+    style={{ width: '60px', height: '40px', objectFit: 'contain', borderRadius: '3px', background: '#fff', padding: '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }} 
+  />
+);
+
+const MastercardLogo = () => (
+  <img 
+    src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" 
+    alt="Mastercard" 
+    style={{ width: '60px', height: '40px', objectFit: 'contain', borderRadius: '3px', background: '#fff', padding: '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }} 
+  />
+);
+
+const AmexLogo = () => (
+  <img 
+    src="https://upload.wikimedia.org/wikipedia/commons/f/fa/American_Express_logo_%282018%29.svg" 
+    alt="Amex" 
+    style={{ width: '60px', height: '40px', objectFit: 'contain', borderRadius: '3px', background: '#fff', padding: '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }} 
+  />
+);
+
 // Helper component for managing text/numeric input for quantity adjustments in cart
 const CartQtyInput = ({ item, dbProduct, updateQuantity, removeFromCart, setToast }) => {
   const [localVal, setLocalVal] = React.useState(item.quantity.toString());
@@ -400,7 +425,16 @@ export default function Register({ setToast }) {
     }
 
     try {
-      const res = await checkout(paymentSplits);
+      const formattedSplits = paymentSplits.map(p => {
+        if (p.method === 'Card' && p.cardBrand) {
+          return {
+            ...p,
+            referenceNumber: p.referenceNumber ? `${p.cardBrand} - ${p.referenceNumber}` : p.cardBrand
+          };
+        }
+        return p;
+      });
+      const res = await checkout(formattedSplits);
       setToast({ type: 'success', message: 'Transaction completed!' });
       setShowCheckoutModal(false);
       fetchProducts(); // refresh stock counts
@@ -679,7 +713,7 @@ export default function Register({ setToast }) {
                 }}
                 value=""
               >
-                <option value="">-- Attach Customer --</option>
+                <option value="">Walk-in Customer (Default)</option>
                 {customers.map(c => (
                   <option key={c.CustomerID} value={c.CustomerID}>
                     {c.Name} {c.Phone ? `(${c.Phone})` : ''}
@@ -862,11 +896,11 @@ export default function Register({ setToast }) {
               <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-secondary)' }}>PAYMENT SPLITS</span>
               
               {paymentSplits.map((p, idx) => (
-                <div key={idx} style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: 'var(--radius-md)' }}>
+                <div key={idx} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: 'var(--radius-md)' }}>
                   
                   {/* Select Payment Method */}
-                  <div style={{ flex: 1.2 }}>
-                    <label className="form-label" style={{ fontSize: '11px' }}>METHOD</label>
+                  <div style={{ flex: 1.2, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>METHOD</label>
                     <select
                       className="form-select"
                       style={{ padding: '8px 12px', fontSize: '13px' }}
@@ -878,11 +912,80 @@ export default function Register({ setToast }) {
                       <option value="Bank Transfer">Bank Transfer</option>
                       <option value="Credit">Credit Sale (Debt)</option>
                     </select>
+                    {p.method === 'Card' && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                        <span style={{ fontSize: '9px', color: 'var(--text-secondary)', fontWeight: '700', letterSpacing: '0.5px' }}>CARD BRAND</span>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => updateSplitField(idx, 'cardBrand', 'Visa')}
+                            style={{
+                              background: 'none',
+                              border: p.cardBrand === 'Visa' ? '2.5px solid var(--primary)' : '2.5px solid transparent',
+                              borderRadius: '5px',
+                              padding: '2px',
+                              cursor: 'pointer',
+                              transition: 'all 0.18s ease',
+                              transform: p.cardBrand === 'Visa' ? 'scale(1.08)' : 'scale(1)',
+                              boxShadow: p.cardBrand === 'Visa' ? '0 0 10px var(--primary)' : 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                            title="Visa"
+                          >
+                            <VisaLogo />
+                          </button>
+                          
+                          <button
+                            type="button"
+                            onClick={() => updateSplitField(idx, 'cardBrand', 'Mastercard')}
+                            style={{
+                              background: 'none',
+                              border: p.cardBrand === 'Mastercard' ? '2.5px solid var(--primary)' : '2.5px solid transparent',
+                              borderRadius: '5px',
+                              padding: '2px',
+                              cursor: 'pointer',
+                              transition: 'all 0.18s ease',
+                              transform: p.cardBrand === 'Mastercard' ? 'scale(1.08)' : 'scale(1)',
+                              boxShadow: p.cardBrand === 'Mastercard' ? '0 0 10px var(--primary)' : 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                            title="Mastercard"
+                          >
+                            <MastercardLogo />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => updateSplitField(idx, 'cardBrand', 'Amex')}
+                            style={{
+                              background: 'none',
+                              border: p.cardBrand === 'Amex' ? '2.5px solid var(--primary)' : '2.5px solid transparent',
+                              borderRadius: '5px',
+                              padding: '2px',
+                              cursor: 'pointer',
+                              transition: 'all 0.18s ease',
+                              transform: p.cardBrand === 'Amex' ? 'scale(1.08)' : 'scale(1)',
+                              boxShadow: p.cardBrand === 'Amex' ? '0 0 10px var(--primary)' : 'none',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center'
+                            }}
+                            title="Amex"
+                          >
+                            <AmexLogo />
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Input Amount */}
-                  <div style={{ flex: 1 }}>
-                    <label className="form-label" style={{ fontSize: '11px' }}>AMOUNT (Rs.)</label>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>AMOUNT (Rs.)</label>
                     <input
                       type="number"
                       className="form-input mono"
@@ -896,8 +999,8 @@ export default function Register({ setToast }) {
                   </div>
 
                   {/* Reference Number */}
-                  <div style={{ flex: 1.5 }}>
-                    <label className="form-label" style={{ fontSize: '11px' }}>REF / SLIP NO</label>
+                  <div style={{ flex: 1.5, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>REF / SLIP NO</label>
                     <input
                       type="text"
                       className="form-input"
@@ -910,13 +1013,16 @@ export default function Register({ setToast }) {
 
                   {/* Delete button if split count > 1 */}
                   {paymentSplits.length > 1 && (
-                    <button 
-                      className="btn btn-danger btn-icon"
-                      style={{ width: '38px', height: '38px', borderRadius: 'var(--radius-md)' }}
-                      onClick={() => removePaymentSplit(idx)}
-                    >
-                      ✕
-                    </button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px', visibility: 'hidden', userSelect: 'none' }}>DEL</label>
+                      <button 
+                        className="btn btn-danger btn-icon"
+                        style={{ width: '38px', height: '38px', borderRadius: 'var(--radius-md)' }}
+                        onClick={() => removePaymentSplit(idx)}
+                      >
+                        ✕
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}

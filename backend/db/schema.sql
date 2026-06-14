@@ -271,7 +271,7 @@ GO
 
 -- Seed Default Customers
 INSERT INTO dbo.Customers (CompanyID, Name, Phone, Email, CreditLimit, CurrentBalance, LoyaltyPoints) VALUES
-(1, 'General Customer', '0000000000', 'general@sellmax.com', 0.00, 0.00, 0),
+(1, 'Walk-in Customer', '0000000000', 'general@sellmax.com', 0.00, 0.00, 0),
 (1, 'John Doe (Gold Loyalty Member)', '+15550199', 'john.doe@gmail.com', 1000.00, 150.00, 450),
 (1, 'Jane Smith (Silver Loyalty Member)', '+15550198', 'jane.smith@yahoo.com', 500.00, 0.00, 180),
 (1, 'Acme Retail Partners', '+15550100', 'billing@acme.com', 5000.00, 2450.00, 120);
