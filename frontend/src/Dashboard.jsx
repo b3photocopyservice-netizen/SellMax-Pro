@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import formatCurrency from './utils/formatCurrency';
 import { useAuth } from './contexts/AuthContext';
 import { DollarSign, ShoppingBag, AlertTriangle, Users, TrendingUp, RefreshCw, Bell, Clock } from 'lucide-react';
 
@@ -150,7 +151,7 @@ export default function Dashboard() {
           </div>
           <div className="metric-info">
             <span className="metric-label">Today's Revenue</span>
-            <span className="metric-value mono">Rs. {Number(metrics.TotalRevenue).toFixed(2)}</span>
+            <span className="metric-value mono">Rs. {formatCurrency(metrics.TotalRevenue)}</span>
           </div>
         </div>
 
@@ -170,7 +171,7 @@ export default function Dashboard() {
           </div>
           <div className="metric-info">
             <span className="metric-label">Average Invoice</span>
-            <span className="metric-value mono">Rs. {Number(metrics.AverageTicketSize).toFixed(2)}</span>
+            <span className="metric-value mono">Rs. {formatCurrency(metrics.AverageTicketSize)}</span>
           </div>
         </div>
 
@@ -287,7 +288,7 @@ export default function Dashboard() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
                       <span style={{ fontWeight: '500' }}>{pm.PaymentMethod}</span>
                       <span className="mono" style={{ color: 'var(--accent)', fontWeight: '600' }}>
-                        Rs. {Number(pm.TotalCollected).toFixed(2)}
+                        Rs. {formatCurrency(pm.TotalCollected)}
                       </span>
                     </div>
                     {/* Visual Progress Bar */}
@@ -431,7 +432,7 @@ export default function Dashboard() {
                         <td className="mono" style={{ fontWeight: '600' }}>{p.PONumber}</td>
                         <td style={{ fontWeight: '600' }}>{p.SupplierName}</td>
                         <td>{new Date(p.OrderDate).toLocaleDateString()}</td>
-                        <td className="mono">Rs. {Number(p.TotalAmount).toFixed(2)}</td>
+                        <td className="mono">Rs. {formatCurrency(p.TotalAmount)}</td>
                         <td>
                           <span style={{
                             padding: '2px 8px', borderRadius: '10px', fontSize: '10.5px', fontWeight: '700',
@@ -508,7 +509,7 @@ export default function Dashboard() {
                     <td>{new Date(sale.OrderDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({new Date(sale.OrderDate).toLocaleDateString()})</td>
                     <td>{sale.CustomerName || 'Walk-in Customer'}</td>
                     <td>{sale.Username}</td>
-                    <td className="mono" style={{ color: 'var(--accent)', fontWeight: '600' }}>Rs. {Number(sale.TotalAmount).toFixed(2)}</td>
+                    <td className="mono" style={{ color: 'var(--accent)', fontWeight: '600' }}>Rs. {formatCurrency(sale.TotalAmount)}</td>
                     <td>
                       <span style={{
                         padding: '3px 8px',

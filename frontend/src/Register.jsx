@@ -1,30 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useCart } from './contexts/CartContext';
+import formatCurrency from './utils/formatCurrency';
 import { useAuth } from './contexts/AuthContext';
-import { Search, Plus, Minus, Trash2, FolderMinus, UserPlus, CreditCard, RefreshCw, ShoppingCart, Lock, DollarSign, Printer, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, FolderMinus, UserPlus, CreditCard, RefreshCw, ShoppingCart, Lock, DollarSign, Printer, CheckCircle, AlertTriangle, Clock, Eye, EyeOff } from 'lucide-react';
 
 // Card Brand Logos for POS Checkout
 const VisaLogo = () => (
   <img 
-    src="https://upload.wikimedia.org/wikipedia/commons/d/d6/Visa_2021.svg" 
+    src="https://cdn.jsdelivr.net/gh/aaronfagan/svg-credit-card-payment-icons/flat-rounded/visa.svg" 
     alt="Visa" 
-    style={{ width: '60px', height: '40px', objectFit: 'contain', borderRadius: '3px', background: '#fff', padding: '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }} 
+    style={{ width: '64px', height: '40px', objectFit: 'contain', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.15)' }} 
   />
 );
 
 const MastercardLogo = () => (
   <img 
-    src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" 
+    src="https://cdn.jsdelivr.net/gh/aaronfagan/svg-credit-card-payment-icons/flat-rounded/mastercard.svg" 
     alt="Mastercard" 
-    style={{ width: '60px', height: '40px', objectFit: 'contain', borderRadius: '3px', background: '#fff', padding: '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }} 
+    style={{ width: '64px', height: '40px', objectFit: 'contain', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.15)' }} 
   />
 );
 
 const AmexLogo = () => (
   <img 
-    src="https://upload.wikimedia.org/wikipedia/commons/f/fa/American_Express_logo_%282018%29.svg" 
+    src="https://cdn.jsdelivr.net/gh/aaronfagan/svg-credit-card-payment-icons/flat-rounded/amex.svg" 
     alt="Amex" 
-    style={{ width: '60px', height: '40px', objectFit: 'contain', borderRadius: '3px', background: '#fff', padding: '2px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }} 
+    style={{ width: '64px', height: '40px', objectFit: 'contain', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.15)' }} 
   />
 );
 
@@ -81,7 +82,7 @@ export default function Register({ setToast }) {
   const { token, API_URL } = useAuth();
   const {
     cartItems, attachedCustomer, discountAmount, subtotal, taxAmount, totalAmount,
-    addToCart, removeFromCart, updateQuantity, setCustomer, applyDiscount, clearCart,
+    addToCart, removeFromCart, updateQuantity, overrideItemPrice, setCustomer, applyDiscount, clearCart,
     checkout, holdSale, resumeSale
   } = useCart();
 
@@ -93,16 +94,38 @@ export default function Register({ setToast }) {
   
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [barcodeQuery, setBarcodeQuery] = useState('');
 
   // UI Drawers / Modals State
-  const [showHoldModal, setShowHoldModal] = useState(false);
-  const [holdNote, setHoldNote] = useState('');
   const [showHeldDrawer, setShowHeldDrawer] = useState(false);
+  const [activeHeldBillNumber, setActiveHeldBillNumber] = useState(null);
+  const [heldSearchQuery, setHeldSearchQuery] = useState('');
   
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [completedOrderDetails, setCompletedOrderDetails] = useState(null);
+  const [companyInfo, setCompanyInfo] = useState(null);
+
+  // Price Override State
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [overrideItem, setOverrideItem] = useState(null);
+  const [overridePriceVal, setOverridePriceVal] = useState('');
+  const [overridePin, setOverridePin] = useState('');
+  const [overrideError, setOverrideError] = useState('');
+  const [verifiedManagerPin, setVerifiedManagerPin] = useState(null);
+
+  // Profit Margin Visibility State
+  const [showProfit, setShowProfit] = useState(false);
+
+  // Checkout Write-off/Round-off State
+  const [writeOffAmount, setWriteOffAmount] = useState(0);
+
+  const getCompanyLogoUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+      return url;
+    }
+    return `${API_URL}${url}`;
+  };
 
   // Split Payment State
   const [paymentSplits, setPaymentSplits] = useState([
@@ -136,7 +159,7 @@ export default function Register({ setToast }) {
         }
         if (unitDiscount > 0) {
           if (minDiscountAmt > 0 && unitDiscount < minDiscountAmt) {
-            return `Discount on '${item.name}' (Rs. ${unitDiscount.toFixed(2)}/unit) is below the minimum allowed discount of Rs. ${minDiscountAmt.toFixed(2)}/unit.`;
+            return `Discount on '${item.name}' (Rs. ${formatCurrency(unitDiscount)}/unit) is below the minimum allowed discount of Rs. ${formatCurrency(minDiscountAmt)}/unit.`;
           }
           if (minDiscountPct > 0 && discountPct < minDiscountPct) {
             return `Discount on '${item.name}' (${discountPct.toFixed(1)}%) is below the minimum allowed discount of ${minDiscountPct.toFixed(1)}%.`;
@@ -145,7 +168,7 @@ export default function Register({ setToast }) {
 
         // Max discount check
         if (maxDiscountAmt > 0 && unitDiscount > maxDiscountAmt) {
-          return `Discount on '${item.name}' (Rs. ${unitDiscount.toFixed(2)}/unit) exceeds the maximum allowed discount of Rs. ${maxDiscountAmt.toFixed(2)}/unit.`;
+          return `Discount on '${item.name}' (Rs. ${formatCurrency(unitDiscount)}/unit) exceeds the maximum allowed discount of Rs. ${formatCurrency(maxDiscountAmt)}/unit.`;
         }
         if (maxDiscountPct > 0 && discountPct > maxDiscountPct) {
           return `Discount on '${item.name}' (${discountPct.toFixed(1)}%) exceeds the maximum allowed discount of ${maxDiscountPct.toFixed(1)}%.`;
@@ -189,8 +212,20 @@ export default function Register({ setToast }) {
     fetchCategories();
     fetchCustomers();
     fetchHeldSalesCount();
+    fetchCompanyInfo();
     // Auto-focus barcode scanner input on load
     if (barcodeInputRef.current) barcodeInputRef.current.focus();
+
+    // Listen for receipt printed message to auto-close receipt modal
+    const handleMessage = (event) => {
+      if (event.data === 'receipt-printed-done') {
+        setShowReceiptModal(false);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
   }, []);
 
   const fetchProducts = async () => {
@@ -261,6 +296,19 @@ export default function Register({ setToast }) {
     }
   };
 
+  const fetchCompanyInfo = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/company`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setCompanyInfo(await res.json());
+      }
+    } catch (err) {
+      console.error('Failed to load company config:', err);
+    }
+  };
+
   // Expiry check helper - returns { blocked: bool, warning: string|null }
   const checkExpiryForProduct = (product, qtyRequested = 1) => {
     if (!product.IsBatchTracked) return { blocked: false, warning: null };
@@ -293,22 +341,84 @@ export default function Register({ setToast }) {
     return { blocked: false, warning: null };
   };
 
-  // Barcode Handler (adds item to cart instantly when scanned/entered)
-  const handleBarcodeSubmit = (e) => {
-    e.preventDefault();
-    if (!barcodeQuery.trim()) return;
+  // Price Override Helpers
+  const openOverrideModal = (item) => {
+    const dbProduct = products.find(p => p.ProductID === item.productId);
+    setOverrideItem({ ...item, dbProduct });
+    setOverridePriceVal(item.price.toString());
+    setOverridePin('');
+    setOverrideError('');
+    setShowOverrideModal(true);
+  };
 
-    const matched = products.find(p => p.Barcode === barcodeQuery.trim() || p.SKU.toLowerCase() === barcodeQuery.trim().toLowerCase());
+  const checkOverrideNeedsPin = (newPrice, dbProduct) => {
+    if (!dbProduct) return false;
+    const origPrice = dbProduct.Price;
+    if (Number(newPrice) >= origPrice) return false;
+    const discountAmt = origPrice - Number(newPrice);
+    const discountPct = (discountAmt / origPrice) * 100;
+    const maxPct = Number(dbProduct.MaxDiscountPct) || 15;
+    if (discountPct > maxPct) return true;
+    if (Number(newPrice) < Number(dbProduct.Cost)) return true;
+    const margin = Number(newPrice) > 0 ? ((Number(newPrice) - Number(dbProduct.Cost)) / Number(newPrice)) * 100 : -100;
+    const minMargin = Number(dbProduct.MinProfitMargin) || 0;
+    if (margin < minMargin) return true;
+    return false;
+  };
+
+  const handleOverrideSubmit = async () => {
+    setOverrideError('');
+    const newPrice = parseFloat(overridePriceVal);
+    if (isNaN(newPrice) || newPrice <= 0) {
+      setOverrideError('Please enter a valid price greater than 0.');
+      return;
+    }
+    const needsPin = checkOverrideNeedsPin(newPrice, overrideItem?.dbProduct);
+    if (needsPin) {
+      if (!overridePin || overridePin.trim() === '') {
+        setOverrideError('Manager PIN is required for this price change (exceeds allowed limits).');
+        return;
+      }
+      // Verify pin with backend
+      try {
+        const pinRes = await fetch(`${API_URL}/api/auth/verify-pin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ pin: overridePin })
+        });
+        const pinData = await pinRes.json();
+        if (!pinRes.ok || !pinData.success) {
+          setOverrideError('Invalid manager PIN. Please try again.');
+          return;
+        }
+        setVerifiedManagerPin(overridePin);
+      } catch (err) {
+        setOverrideError('Failed to verify PIN. Check connection.');
+        return;
+      }
+    }
+    overrideItemPrice(overrideItem.productId, newPrice);
+    setShowOverrideModal(false);
+    setToast({ type: 'success', message: `Price updated to Rs. ${newPrice.toFixed(2)} for '${overrideItem.name}'.` });
+  };
+
+  // Unified Search / Barcode Handler (adds item to cart instantly when exact barcode/SKU is submitted)
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    const query = searchQuery.trim();
+    if (!query) return;
+
+    const matched = products.find(p => p.Barcode === query || p.SKU.toLowerCase() === query.toLowerCase());
     if (matched) {
       if (matched.IsActive === false || matched.IsActive === 0) {
         setToast({ type: 'error', message: `Product '${matched.Name}' is inactive and cannot be sold.` });
-        setBarcodeQuery('');
+        setSearchQuery('');
         return;
       }
       const { blocked, warning } = checkExpiryForProduct(matched);
       if (blocked) {
         setToast({ type: 'error', message: warning });
-        setBarcodeQuery('');
+        setSearchQuery('');
         return;
       }
       try {
@@ -318,10 +428,15 @@ export default function Register({ setToast }) {
       } catch (err) {
         setToast({ type: 'error', message: err.message });
       }
+      setSearchQuery('');
     } else {
-      setToast({ type: 'error', message: `No product found for code: ${barcodeQuery}` });
+      // If it looks like a barcode/SKU (e.g. alphanumeric without spaces, length >= 3), show error and clear input
+      const looksLikeCode = /^[A-Za-z0-9_-]+$/.test(query) && query.length >= 3;
+      if (looksLikeCode) {
+        setToast({ type: 'error', message: `No product found for code: ${query}` });
+        setSearchQuery('');
+      }
     }
-    setBarcodeQuery('');
   };
 
   // Click handler for catalog product cards
@@ -347,14 +462,16 @@ export default function Register({ setToast }) {
     }
   };
 
-  // Hold Sale trigger
-  const handleHoldSaleSubmit = async (e) => {
-    e.preventDefault();
+  // Hold Sale directly without modal
+  const handleHoldSaleDirectly = async () => {
+    if (cartItems.length === 0) return;
     try {
-      await holdSale(holdNote || 'Table/Queue Order');
-      setToast({ type: 'success', message: 'Sale suspended successfully.' });
-      setShowHoldModal(false);
-      setHoldNote('');
+      const res = await holdSale(activeHeldBillNumber);
+      setToast({ 
+        type: 'success', 
+        message: `Bill suspended successfully. Bill Number: ${res.heldBillNumber}` 
+      });
+      setActiveHeldBillNumber(null);
       fetchHeldSalesCount();
     } catch (err) {
       setToast({ type: 'error', message: err.message });
@@ -372,7 +489,8 @@ export default function Register({ setToast }) {
       if (!res.ok) throw new Error(data.error || 'Failed to resume.');
 
       resumeSale(data); // loads items to context cart
-      setToast({ type: 'success', message: `Resumed suspended sale #${heldOrder.OrderID}` });
+      setActiveHeldBillNumber(heldOrder.HeldBillNumber);
+      setToast({ type: 'success', message: `Resumed Bill ${heldOrder.HeldBillNumber}` });
       setShowHeldDrawer(false);
       fetchHeldSalesCount();
     } catch (err) {
@@ -380,18 +498,57 @@ export default function Register({ setToast }) {
     }
   };
 
+  // Cancel/Delete Held Sale trigger
+  const handleCancelHeldSaleClick = async (heldOrder) => {
+    if (!window.confirm(`Are you sure you want to cancel and permanently delete Bill ${heldOrder.HeldBillNumber}?`)) return;
+    try {
+      const res = await fetch(`${API_URL}/api/sales/held/${heldOrder.OrderID}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to cancel.');
+      setToast({ type: 'success', message: `Bill ${heldOrder.HeldBillNumber} cancelled.` });
+      fetchHeldSalesCount();
+    } catch (err) {
+      setToast({ type: 'error', message: err.message });
+    }
+  };
+
+  // Clear cart wrapper to reset active resumed bill number
+  const handleClearCart = () => {
+    clearCart();
+    setActiveHeldBillNumber(null);
+  };
+
   // Open Checkout and preset first split amount
   const handleCheckoutOpen = () => {
     if (cartItems.length === 0) return;
-    setPaymentSplits([{ method: 'Cash', amount: totalAmount, referenceNumber: '' }]);
+    setWriteOffAmount(0);
+    setPaymentSplits([{ method: 'Cash', amount: totalAmount, referenceNumber: '', amountReceived: '' }]);
     setCheckoutError('');
     setShowCheckoutModal(true);
+  };
+
+  // Handle write-off (round-off adjustment) input changes
+  const handleWriteOffChange = (e) => {
+    const val = e.target.value;
+    const num = parseFloat(val) || 0;
+    setWriteOffAmount(val);
+    
+    // Automatically adjust the first split amount if there's only 1 split
+    if (paymentSplits.length === 1) {
+      setPaymentSplits([{
+        ...paymentSplits[0],
+        amount: Number(Math.max(0, totalAmount - num).toFixed(2))
+      }]);
+    }
   };
 
   // Add a split payment row
   const addPaymentSplit = () => {
     const remaining = Number((totalAmount - paymentSplits.reduce((sum, p) => sum + p.amount, 0)).toFixed(2));
-    setPaymentSplits([...paymentSplits, { method: 'Cash', amount: Math.max(0, remaining), referenceNumber: '' }]);
+    setPaymentSplits([...paymentSplits, { method: 'Cash', amount: Math.max(0, remaining), referenceNumber: '', amountReceived: '' }]);
   };
 
   // Remove a split payment row
@@ -404,8 +561,17 @@ export default function Register({ setToast }) {
     setPaymentSplits(paymentSplits.map((p, i) => {
       if (i === idx) {
         let val = value;
-        if (field === 'amount') val = Number(value) || 0;
-        return { ...p, [field]: val };
+        if (field === 'amount') val = value === '' ? 0 : (Number(value) || 0);
+        if (field === 'amountReceived') val = value === '' ? '' : (Number(value) || 0);
+        
+        const updated = { ...p, [field]: val };
+        
+        if (field === 'method') {
+          updated.cardBrand = '';
+          updated.referenceNumber = '';
+          updated.amountReceived = '';
+        }
+        return updated;
       }
       return p;
     }));
@@ -419,22 +585,43 @@ export default function Register({ setToast }) {
       return;
     }
     const splitsSum = paymentSplits.reduce((sum, p) => sum + p.amount, 0);
-    if (Math.abs(splitsSum - totalAmount) > 0.01) {
-      setCheckoutError(`Split totals (Rs. ${splitsSum.toFixed(2)}) do not match total due (Rs. ${totalAmount.toFixed(2)}).`);
+    const writeOffNum = parseFloat(writeOffAmount || 0);
+    if (Math.abs(splitsSum + writeOffNum - totalAmount) > 0.01) {
+      setCheckoutError(`Split totals + write-off (Rs. ${formatCurrency(splitsSum + writeOffNum)}) do not match total due (Rs. ${formatCurrency(totalAmount)}).`);
       return;
     }
 
     try {
-      const formattedSplits = paymentSplits.map(p => {
+      const splitsWithWriteOff = [...paymentSplits];
+      if (writeOffNum > 0) {
+        splitsWithWriteOff.push({
+          method: 'Write-off',
+          amount: writeOffNum,
+          referenceNumber: 'Balance Round-off Adjustment'
+        });
+      }
+
+      const formattedSplits = splitsWithWriteOff.map(p => {
         if (p.method === 'Card' && p.cardBrand) {
           return {
             ...p,
             referenceNumber: p.referenceNumber ? `${p.cardBrand} - ${p.referenceNumber}` : p.cardBrand
           };
         }
+        if (p.method === 'Cash') {
+          const amtRecv = p.amountReceived !== '' && p.amountReceived !== undefined && p.amountReceived !== null ? parseFloat(p.amountReceived) : p.amount;
+          const change = amtRecv - p.amount;
+          return {
+            ...p,
+            referenceNumber: `Recv:${formatCurrency(amtRecv)},Change:${formatCurrency(change)}`
+          };
+        }
         return p;
       });
-      const res = await checkout(formattedSplits);
+      const res = await checkout(formattedSplits, verifiedManagerPin);
+      setVerifiedManagerPin(null); // reset after checkout
+      setWriteOffAmount(0); // reset write-off after checkout
+      setActiveHeldBillNumber(null); // reset resumed bill number
       setToast({ type: 'success', message: 'Transaction completed!' });
       setShowCheckoutModal(false);
       fetchProducts(); // refresh stock counts
@@ -453,15 +640,203 @@ export default function Register({ setToast }) {
     }
   };
 
-  // Print function
+  // Print function — opens a dedicated popup window with 80mm thermal CSS
   const handlePrintReceipt = () => {
-    window.print();
+    const order = completedOrderDetails?.order;
+    const items = completedOrderDetails?.items || [];
+    const payments = completedOrderDetails?.payments || [];
+    if (!order) return;
+
+    const logoUrl = companyInfo?.LogoURL ? getCompanyLogoUrl(companyInfo.LogoURL) : null;
+
+    const paymentsHtml = payments.map(p => {
+      const isCash = p.Method === 'Cash';
+      let recv = null, change = null;
+      if (isCash && p.ReferenceNumber && p.ReferenceNumber.startsWith('Recv:')) {
+        p.ReferenceNumber.split(',').forEach(part => {
+          if (part.startsWith('Recv:')) recv = parseFloat(part.replace('Recv:', ''));
+          if (part.startsWith('Change:')) change = parseFloat(part.replace('Change:', ''));
+        });
+      }
+      return `
+        <div class="pay-row">
+          <span>- ${p.Method}${!isCash && p.ReferenceNumber ? ` (${p.ReferenceNumber})` : ''}</span>
+          <span>Rs. ${Number(p.Amount).toFixed(2)}</span>
+        </div>
+        ${recv !== null ? `<div class="pay-sub"><span>Received:</span><span>Rs. ${recv.toFixed(2)}</span></div>` : ''}
+        ${change !== null ? `<div class="pay-sub"><span>Change:</span><span>Rs. ${change.toFixed(2)}</span></div>` : ''}
+      `;
+    }).join('');
+
+    const itemsHtml = items.map(item => {
+      const hasOverride = item.OriginalPrice && Number(item.OriginalPrice) !== Number(item.Price);
+      const origHtml = hasOverride 
+        ? `<div style="font-size: 9px; color: #d97706;">Orig: <span style="text-decoration: line-through;">Rs. ${Number(item.OriginalPrice).toFixed(2)}</span></div>` 
+        : '';
+      return `
+        <tr>
+          <td>
+            <div>${item.ProductName}</div>
+            ${origHtml}
+          </td>
+          <td style="text-align:center">${Number(item.Quantity)} ${item.UOM || 'pcs'}</td>
+          <td style="text-align:right">Rs. ${Number(item.Subtotal).toFixed(2)}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const discountHtml = Number(order.DiscountAmount) > 0
+      ? `<div class="sum-row"><span>Discount:</span><span>-Rs. ${Number(order.DiscountAmount).toFixed(2)}</span></div>`
+      : '';
+
+    const addressParts = [
+      companyInfo?.AddressLine1,
+      companyInfo?.AddressLine2,
+      companyInfo?.City && companyInfo?.PostalCode
+        ? `${companyInfo.City}, ${companyInfo.PostalCode}`
+        : (companyInfo?.City || companyInfo?.PostalCode || ''),
+    ].filter(Boolean).join('<br>');
+
+    const contactParts = [
+      (companyInfo?.TelephoneNumber || companyInfo?.MobileNumber)
+        ? `Tel: ${companyInfo.TelephoneNumber || companyInfo.MobileNumber}`
+        : null,
+      companyInfo?.Email ? `Email: ${companyInfo.Email}` : null,
+      companyInfo?.Website || null,
+    ].filter(Boolean).join('<br>');
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Receipt #SM-${order.OrderID}</title>
+<style>
+  @page {
+    size: 80mm auto;
+    margin: 4mm 4mm;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12px;
+    color: #000;
+    width: 100%;
+    background: white;
+  }
+  .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 6px; margin-bottom: 6px; }
+  .logo { max-height: 50px; max-width: 90%; object-fit: contain; margin-bottom: 4px; }
+  .company-name { font-size: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+  .company-sub { font-size: 11px; color: #111; line-height: 1.5; margin-top: 3px; }
+  .meta { font-size: 12px; line-height: 1.7; border-bottom: 1px dashed #000; padding-bottom: 5px; margin-bottom: 5px; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  thead th { font-size: 11px; font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 4px 2px; overflow: hidden; }
+  tbody td { font-size: 11px; padding: 3px 2px; vertical-align: top; word-break: break-word; overflow: hidden; }
+  .col-item { width: 52%; }
+  .col-qty  { width: 18%; text-align: center; }
+  .col-price{ width: 30%; text-align: right; }
+  .summary { border-top: 1px dashed #000; padding-top: 5px; margin-top: 5px; }
+  .sum-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+  .sum-total { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; margin-top: 4px; padding: 4px 0; }
+  .payments { border-top: 1px dashed #000; margin-top: 5px; padding-top: 5px; font-size: 12px; }
+  .pay-label { font-weight: bold; margin-bottom: 3px; font-size: 12px; }
+  .pay-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+  .pay-sub { display: flex; justify-content: space-between; font-size: 11px; padding-left: 10px; color: #333; }
+  .footer { text-align: center; border-top: 1px dashed #000; margin-top: 8px; padding-top: 6px; font-size: 11px; line-height: 1.6; color: #333; }
+</style>
+</head>
+<body>
+  <div class="header">
+    ${logoUrl ? `<div><img class="logo" src="${logoUrl}" alt="Logo"></div>` : ''}
+    <div class="company-name">${companyInfo?.Name || 'SELLMAX PRO'}</div>
+    ${addressParts || contactParts ? `<div class="company-sub">${[addressParts, contactParts].filter(Boolean).join('<br>')}</div>` : ''}
+  </div>
+
+  <div class="meta">
+    <div>INVOICE: #SM-${order.OrderID}</div>
+    <div>DATE: ${new Date(order.OrderDate).toLocaleString()}</div>
+    <div>CASHIER: ${order.Username}</div>
+    <div>CUSTOMER: ${order.CustomerName || 'Walk-in Customer'}</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="col-item" style="text-align:left">ITEM</th>
+        <th class="col-qty">QTY</th>
+        <th class="col-price">PRICE</th>
+      </tr>
+    </thead>
+    <tbody>${itemsHtml}</tbody>
+  </table>
+
+  <div class="summary">
+    <div class="sum-row"><span>Subtotal:</span><span>Rs. ${Number(order.Subtotal).toFixed(2)}</span></div>
+    ${discountHtml}
+    <div class="sum-row"><span>VAT:</span><span>Rs. ${Number(order.TaxAmount).toFixed(2)}</span></div>
+    <div class="sum-total"><span>TOTAL PAID:</span><span>Rs. ${Number(order.TotalAmount).toFixed(2)}</span></div>
+  </div>
+
+  <div class="payments">
+    <div class="pay-label">Payments:</div>
+    ${paymentsHtml}
+  </div>
+
+  <div class="footer">
+    <p>Thank you for shopping with us!</p>
+    <div style="margin-top: 8px;">
+      <strong>Exchange Policy</strong>
+      <p style="margin-top: 2px; font-size: 10px; line-height: 1.3;">A one-time exchange is allowed within two days of purchase, provided the original bill is available.</p>
+      <p style="margin-top: 2px; font-size: 10px; line-height: 1.3;">No cash refunds will be issued under any circumstances.</p>
+    </div>
+    <p style="margin-top: 8px; font-size: 9px; opacity: 0.8;">Powered by SellMax Pro POS</p>
+  </div>
+  <script>
+    function closeWindow() {
+      try {
+        if (window.opener) {
+          window.opener.postMessage("receipt-printed-done", "*");
+        }
+      } catch(e) {}
+      window.close();
+    }
+    window.onload = function() {
+      window.focus();
+      setTimeout(function() {
+        if ('onafterprint' in window) {
+          window.onafterprint = closeWindow;
+          window.print();
+        } else {
+          window.print();
+          setTimeout(closeWindow, 500);
+        }
+      }, 300);
+    };
+  </script>
+</body>
+</html>`;
+
+    const popup = window.open('', '_blank', 'width=320,height=600,toolbar=0,menubar=0,location=0,status=0');
+    if (!popup) {
+      setToast({ type: 'error', message: 'Pop-up blocked! Allow pop-ups for this site to print receipts.' });
+      return;
+    }
+    popup.document.write(html);
+    popup.document.close();
+    popup.focus();
   };
+
+  // Calculate cash change or balance due
+  const cashSplits = paymentSplits.filter(p => p.method === 'Cash');
+  const hasCashPayment = cashSplits.length > 0;
+  const totalCashAmount = cashSplits.reduce((sum, p) => sum + p.amount, 0);
+  const totalCashReceived = cashSplits.reduce((sum, p) => sum + (parseFloat(p.amountReceived) || 0), 0);
+  const cashReceivedEntered = cashSplits.some(p => p.amountReceived !== '' && p.amountReceived !== undefined && p.amountReceived !== null);
 
   // Filter products locally for instantaneous responsiveness
   const filteredProducts = products.filter(p => {
     if (p.IsActive === false || p.IsActive === 0) return false;
-    const matchesCategory = selectedCategory ? p.CategoryID === selectedCategory : true;
+    // Global search: ignore category filter when a search query is active
+    const matchesCategory = (selectedCategory && !searchQuery) ? p.CategoryID === selectedCategory : true;
     const matchesSearch = searchQuery ? (
       p.Name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.SKU.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -475,32 +850,21 @@ export default function Register({ setToast }) {
       {/* 1. Left Catalog Panel */}
       <div className="catalog-panel">
         <div className="pos-header">
-          {/* Barcode scanner form (hidden from eye or sleekly designed) */}
-          <form onSubmit={handleBarcodeSubmit} style={{ width: '220px', flexShrink: 0 }}>
-            <div style={{ position: 'relative' }}>
+          {/* Unified Global Search & Barcode Scanner */}
+          <form onSubmit={handleSearchSubmit} style={{ flex: 1 }}>
+            <div className="search-box-container" style={{ position: 'relative', width: '100%' }}>
+              <Search className="search-icon" size={18} />
               <input
                 ref={barcodeInputRef}
                 type="text"
-                className="form-input"
-                style={{ paddingLeft: '14px', fontFamily: 'var(--font-mono)' }}
-                placeholder="Scan Barcode / SKU..."
-                value={barcodeQuery}
-                onChange={(e) => setBarcodeQuery(e.target.value)}
+                className="form-input pos-search"
+                style={{ width: '100%' }}
+                placeholder="Search name, SKU, or scan barcode..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
           </form>
-
-          {/* Product search */}
-          <div className="search-box-container">
-            <Search className="search-icon" size={18} />
-            <input
-              type="text"
-              className="form-input pos-search"
-              placeholder="Search product catalog by name, SKU..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
 
           {/* Suspended orders button */}
           <button 
@@ -516,21 +880,39 @@ export default function Register({ setToast }) {
         {/* Category Tabs */}
         <div className="category-tabs">
           <button 
-            className={`category-tab ${selectedCategory === null ? 'active' : ''}`}
-            onClick={() => setSelectedCategory(null)}
+            className={`category-tab ${selectedCategory === null && !searchQuery ? 'active' : ''}`}
+            onClick={() => {
+              setSelectedCategory(null);
+              setSearchQuery('');
+            }}
           >
             All Products
           </button>
           {categories.map((c) => (
             <button
               key={c.CategoryID}
-              className={`category-tab ${selectedCategory === c.CategoryID ? 'active' : ''}`}
-              onClick={() => setSelectedCategory(c.CategoryID)}
+              className={`category-tab ${selectedCategory === c.CategoryID && !searchQuery ? 'active' : ''}`}
+              onClick={() => {
+                setSelectedCategory(c.CategoryID);
+                setSearchQuery('');
+              }}
             >
               {c.Name}
             </button>
           ))}
         </div>
+
+        {searchQuery && (
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px', padding: '0 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Showing results for "<strong>{searchQuery}</strong>" across all categories (Global Search)</span>
+            <button 
+              onClick={() => setSearchQuery('')}
+              style={{ fontSize: '11px', background: 'none', border: 'none', color: 'var(--text-primary)', textDecoration: 'underline', cursor: 'pointer', padding: 0 }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
 
         {/* Product Grid */}
         {filteredProducts.length === 0 ? (
@@ -579,7 +961,7 @@ export default function Register({ setToast }) {
                   <div className="product-info">
                     <div className="product-name">{p.Name}</div>
                     <div className="product-meta-row">
-                      <div className="product-price">Rs. {Number(p.Price).toFixed(2)} / {p.UOM || 'pcs'}</div>
+                      <div className="product-price">Rs. {formatCurrency(p.Price)} / {p.UOM || 'pcs'}</div>
                       <div className={`product-stock ${remainingStock <= 0 || expiryBlocked ? 'out-of-stock' : remainingStock <= p.LowStockThreshold ? 'low-stock' : ''}`}>
                         {expiryBlocked ? 'Expired' : remainingStock <= 0 ? 'Out of Stock' : `${Number(remainingStock)} ${p.UOM || 'pcs'} left`}
                       </div>
@@ -594,20 +976,57 @@ export default function Register({ setToast }) {
 
       {/* 2. Right Cart Sidebar */}
       <div className="cart-sidebar">
-        <div className="cart-header">
-          <div className="cart-title">
-            <ShoppingCart size={20} />
-            <span>Active Billing</span>
-            {cartItems.length > 0 && <span className="cart-badge">{cartItems.reduce((s,i)=>s+i.quantity,0)} items</span>}
+        <div className="cart-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <div className="cart-title">
+              <ShoppingCart size={20} />
+              <span>Active Billing</span>
+              {cartItems.length > 0 && <span className="cart-badge">{cartItems.reduce((s,i)=>s+i.quantity,0)} items</span>}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <button
+                className="btn btn-secondary"
+                style={{
+                  fontSize: '11px',
+                  padding: '4px 8px',
+                  height: 'auto',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  color: 'var(--text-secondary)'
+                }}
+                onClick={() => setShowProfit(!showProfit)}
+                title={showProfit ? "Hide Profit Margins" : "View Profit Margins"}
+              >
+                {showProfit ? <EyeOff size={13} /> : <Eye size={13} />}
+                <span>{showProfit ? "Hide Profit" : "View Profit"}</span>
+              </button>
+              <button 
+                className="btn btn-secondary btn-icon" 
+                style={{ color: 'var(--text-muted)', border: 'none', background: 'transparent' }}
+                onClick={handleClearCart}
+                title="Clear Cart"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
-          <button 
-            className="btn btn-secondary btn-icon" 
-            style={{ color: 'var(--text-muted)', border: 'none', background: 'transparent' }}
-            onClick={clearCart}
-            title="Clear Cart"
-          >
-            <Trash2 size={16} />
-          </button>
+          {activeHeldBillNumber && (
+            <div style={{
+              background: 'rgba(245, 158, 11, 0.15)',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              color: '#fbbf24',
+              fontSize: '11px',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              fontWeight: '600',
+              alignSelf: 'flex-start'
+            }}>
+              Resumed Bill: {activeHeldBillNumber}
+            </div>
+          )}
         </div>
 
         {/* Cart items list */}
@@ -634,7 +1053,63 @@ export default function Register({ setToast }) {
                 <div key={item.productId} className="cart-item">
                   <div className="cart-item-details">
                     <div className="cart-item-name">{item.name}</div>
-                    <div className="cart-item-price">Rs. {Number(item.price).toFixed(2)} / {dbProduct.UOM || 'pcs'}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      {item.originalPrice && Number(item.originalPrice) !== Number(item.price) ? (
+                        <>
+                          <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '11px' }}>
+                            Rs. {formatCurrency(item.originalPrice)}
+                          </span>
+                          <span className="cart-item-price" style={{ color: '#f59e0b' }}>
+                            Rs. {formatCurrency(item.price)} / {dbProduct.UOM || 'pcs'}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="cart-item-price">Rs. {formatCurrency(item.price)} / {dbProduct.UOM || 'pcs'}</span>
+                      )}
+                      <button
+                        title="Edit Price"
+                        onClick={() => openOverrideModal(item)}
+                        style={{
+                          background: 'rgba(139, 92, 246, 0.15)',
+                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                          color: 'var(--primary)',
+                          borderRadius: '5px',
+                          padding: '2px 7px',
+                          fontSize: '10px',
+                          cursor: 'pointer',
+                          fontWeight: '600',
+                          lineHeight: 1.4,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <DollarSign size={10} /> Edit
+                      </button>
+                    </div>
+                    {showProfit && (
+                      <div style={{
+                        display: 'flex',
+                        gap: '12px',
+                        fontSize: '11px',
+                        color: 'var(--text-secondary)',
+                        background: 'rgba(255, 255, 255, 0.03)',
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        marginTop: '6px',
+                        border: '1px dashed rgba(255, 255, 255, 0.05)',
+                        width: 'fit-content'
+                      }}>
+                        <span>Cost: Rs. {formatCurrency(item.cost)}</span>
+                        <span>Profit: <span style={{ color: (item.price - item.cost) >= 0 ? '#10b981' : '#ef4444', fontWeight: '500' }}>
+                          Rs. {formatCurrency(item.price - item.cost)}
+                        </span></span>
+                        <span>Margin: <span style={{ color: (item.price - item.cost) >= 0 ? '#10b981' : '#ef4444', fontWeight: '600' }}>
+                          {item.price > 0 ? (((item.price - item.cost) / item.price) * 100).toFixed(2) : '0.00'}%
+                        </span></span>
+                      </div>
+                    )}
                     {cartExpiryWarning && (
                       <div style={{ fontSize: '10px', color: soonestExpiry <= 0 ? '#ef4444' : '#eab308', fontWeight: '600', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <Clock size={10} /> {cartExpiryWarning}
@@ -696,7 +1171,7 @@ export default function Register({ setToast }) {
                 <span style={{ fontWeight: '600', fontSize: '12px' }}>{attachedCustomer.Name}</span>
                 {attachedCustomer.LoyaltyPoints !== undefined && (
                   <span style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>
-                    VIP Points: {attachedCustomer.LoyaltyPoints} | Credit Limit: Rs. {Number(attachedCustomer.CreditLimit).toFixed(2)}
+                    VIP Points: {attachedCustomer.LoyaltyPoints} | Credit Limit: Rs. {formatCurrency(attachedCustomer.CreditLimit)}
                   </span>
                 )}
               </div>
@@ -728,7 +1203,7 @@ export default function Register({ setToast }) {
         <div className="cart-summary">
           <div className="summary-row">
             <span>Subtotal</span>
-            <span className="mono">Rs. {subtotal.toFixed(2)}</span>
+            <span className="mono">Rs. {formatCurrency(subtotal)}</span>
           </div>
 
           <div className="summary-row" style={{ alignItems: 'center' }}>
@@ -761,19 +1236,58 @@ export default function Register({ setToast }) {
           )}
 
           <div className="summary-row">
-            <span>Tax (10%)</span>
-            <span className="mono">Rs. {taxAmount.toFixed(2)}</span>
+            <span>VAT</span>
+            <span className="mono">Rs. {formatCurrency(taxAmount)}</span>
           </div>
 
           <div className="summary-row total">
             <span>Total Due</span>
-            <span className="total-amount">Rs. {totalAmount.toFixed(2)}</span>
+            <span className="total-amount">Rs. {formatCurrency(totalAmount)}</span>
           </div>
+
+          {showProfit && cartItems.length > 0 && (() => {
+            const totalCost = cartItems.reduce((sum, item) => sum + (item.cost * item.quantity), 0);
+            const netRevenue = Math.max(0, subtotal - discountAmount);
+            const totalProfit = netRevenue - totalCost;
+            const overallMargin = netRevenue > 0 ? (totalProfit / netRevenue) * 100 : 0;
+            return (
+              <div style={{
+                background: 'rgba(139, 92, 246, 0.08)',
+                border: '1px solid rgba(139, 92, 246, 0.15)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '10px 12px',
+                marginTop: '12px',
+                marginBottom: '4px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+                fontSize: '12px',
+                textAlign: 'left'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Total Cost Price</span>
+                  <span className="mono" style={{ fontWeight: '600' }}>Rs. {formatCurrency(totalCost)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Total Profit Amount</span>
+                  <span className="mono" style={{ fontWeight: '600', color: totalProfit >= 0 ? '#10b981' : '#ef4444' }}>
+                    Rs. {formatCurrency(totalProfit)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: '6px', marginTop: '2px' }}>
+                  <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Overall Profit Margin</span>
+                  <span className="mono" style={{ fontWeight: '700', color: totalProfit >= 0 ? '#10b981' : '#ef4444' }}>
+                    {overallMargin.toFixed(2)}%
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
 
           <div className="cart-actions">
             <button 
               className="btn btn-secondary" 
-              onClick={() => { if (cartItems.length > 0) setShowHoldModal(true); }}
+              onClick={handleHoldSaleDirectly}
               disabled={cartItems.length === 0}
             >
               Suspend
@@ -790,81 +1304,82 @@ export default function Register({ setToast }) {
       </div>
 
       {/* ============================================================================
-         MODAL: SUSPEND ORDER NOTE
-         ============================================================================ */}
-      {showHoldModal && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ width: '400px' }}>
-            <h3 style={{ marginBottom: '16px' }}>Suspend Active Order</h3>
-            <form onSubmit={handleHoldSaleSubmit}>
-              <div className="form-group">
-                <label className="form-label">Order Note / Queue Ref</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Table 14, Order #2, Call Name"
-                  value={holdNote}
-                  onChange={(e) => setHoldNote(e.target.value)}
-                  autoFocus
-                  required
-                />
-              </div>
-              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowHoldModal(false)}>Cancel</button>
-                <button type="submit" className="btn btn-primary">Suspend Sale</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================================
          DRAWER: HELD ORDERS
          ============================================================================ */}
       {showHeldDrawer && (
         <div className="modal-overlay" onClick={() => setShowHeldDrawer(false)}>
           <div 
             className="modal-content" 
-            style={{ width: '450px', height: '100vh', margin: 0, position: 'fixed', right: 0, top: 0, bottom: 0, borderRadius: 0 }}
+            style={{ width: '480px', height: '100vh', margin: 0, position: 'fixed', right: 0, top: 0, bottom: 0, borderRadius: 0, display: 'flex', flexDirection: 'column' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between' }}>
-              <span>Held Transactions</span>
-              <button style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }} onClick={() => setShowHeldDrawer(false)}>✕</button>
+            <h3 style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Held Bills</span>
+              <button style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '20px' }} onClick={() => setShowHeldDrawer(false)}>✕</button>
             </h3>
 
-            {heldSales.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: '40px' }}>No suspended sales found.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', maxHeight: 'calc(100vh - 120px)' }}>
-                {heldSales.map((held) => (
-                  <div key={held.OrderID} style={{
-                    background: 'rgba(255, 255, 255, 0.02)',
-                    border: '1px solid var(--border-color)',
-                    padding: '16px',
-                    borderRadius: 'var(--radius-md)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '10px'
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontWeight: '700' }}>#{held.OrderID} - {held.HeldNote}</span>
-                      <span className="mono" style={{ color: 'var(--accent)', fontWeight: '600' }}>Rs. {Number(held.TotalAmount).toFixed(2)}</span>
+            {/* Held Bills Search */}
+            <div style={{ marginBottom: '16px' }}>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Search by Bill Number..."
+                value={heldSearchQuery}
+                onChange={(e) => setHeldSearchQuery(e.target.value)}
+                style={{ width: '100%' }}
+              />
+            </div>
+
+            {(() => {
+              const filteredHeldSales = heldSales.filter(h => 
+                h.HeldBillNumber && h.HeldBillNumber.toLowerCase().includes(heldSearchQuery.toLowerCase())
+              );
+
+              if (filteredHeldSales.length === 0) {
+                return <p style={{ color: 'var(--text-muted)', textAlign: 'center', marginTop: '40px' }}>No matching hold bills found.</p>;
+              }
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', overflowY: 'auto', flex: 1, paddingRight: '4px' }}>
+                  {filteredHeldSales.map((held) => (
+                    <div key={held.OrderID} style={{
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      border: '1px solid var(--border-color)',
+                      padding: '16px',
+                      borderRadius: 'var(--radius-md)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '10px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{held.HeldBillNumber}</span>
+                        <span className="mono" style={{ color: 'var(--accent)', fontWeight: '600' }}>Rs. {formatCurrency(held.TotalAmount)}</span>
+                      </div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <div>Time: {new Date(held.OrderDate).toLocaleTimeString()} ({new Date(held.OrderDate).toLocaleDateString()})</div>
+                        <div>Cashier: <strong style={{ color: 'var(--text-primary)' }}>{held.CashierName || 'System'}</strong></div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                        <button 
+                          className="btn btn-primary" 
+                          style={{ flex: 1, padding: '6px 12px', fontSize: '12px' }}
+                          onClick={() => handleResumeSaleClick(held)}
+                        >
+                          Resume
+                        </button>
+                        <button 
+                          className="btn btn-secondary" 
+                          style={{ flex: 1, padding: '6px 12px', fontSize: '12px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#fca5a5' }}
+                          onClick={() => handleCancelHeldSaleClick(held)}
+                        >
+                          Cancel Bill
+                        </button>
+                      </div>
                     </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                      Saved: {new Date(held.OrderDate).toLocaleTimeString()} ({new Date(held.OrderDate).toLocaleDateString()})
-                    </div>
-                    <button 
-                      className="btn btn-primary" 
-                      style={{ padding: '6px 12px', fontSize: '12.5px', marginTop: '6px' }}
-                      onClick={() => handleResumeSaleClick(held)}
-                    >
-                      Resume Order
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -877,7 +1392,7 @@ export default function Register({ setToast }) {
           <div className="modal-content" style={{ width: '580px' }}>
             <h3 style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
               <span>Order Checkout</span>
-              <span className="mono" style={{ color: 'var(--accent)' }}>Total: Rs. {totalAmount.toFixed(2)}</span>
+              <span className="mono" style={{ color: 'var(--accent)' }}>Total: Rs. {formatCurrency(totalAmount)}</span>
             </h3>
 
             {checkoutError && (
@@ -998,17 +1513,35 @@ export default function Register({ setToast }) {
                     />
                   </div>
 
-                  {/* Reference Number */}
+                  {/* Reference Number / Amount Received */}
                   <div style={{ flex: 1.5, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>REF / SLIP NO</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      style={{ padding: '8px 12px', fontSize: '13px' }}
-                      placeholder="Txn ID, Terminal Ref"
-                      value={p.referenceNumber}
-                      onChange={(e) => updateSplitField(idx, 'referenceNumber', e.target.value)}
-                    />
+                    {p.method === 'Cash' ? (
+                      <>
+                        <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>AMOUNT RECEIVED (Rs.)</label>
+                        <input
+                          type="number"
+                          className="form-input mono"
+                          style={{ padding: '8px 12px', fontSize: '13px' }}
+                          placeholder="0.00"
+                          value={p.amountReceived !== undefined ? p.amountReceived : ''}
+                          onChange={(e) => updateSplitField(idx, 'amountReceived', e.target.value)}
+                          step="0.01"
+                          min="0"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <label className="form-label" style={{ fontSize: '11px', marginBottom: '4px' }}>REF / SLIP NO</label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          style={{ padding: '8px 12px', fontSize: '13px' }}
+                          placeholder="Txn ID, Terminal Ref"
+                          value={p.referenceNumber}
+                          onChange={(e) => updateSplitField(idx, 'referenceNumber', e.target.value)}
+                        />
+                      </>
+                    )}
                   </div>
 
                   {/* Delete button if split count > 1 */}
@@ -1036,23 +1569,99 @@ export default function Register({ setToast }) {
               </button>
             </div>
 
-            {/* Calculations info */}
-            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', color: 'var(--text-secondary)' }}>
-              <span>Total Payments Aggregated:</span>
-              <span className="mono" style={{
-                fontWeight: '700',
-                color: Math.abs(paymentSplits.reduce((s,p)=>s+p.amount,0) - totalAmount) < 0.01 ? 'var(--success)' : 'var(--danger)'
-              }}>
-                Rs. {paymentSplits.reduce((s,p)=>s+p.amount,0).toFixed(2)} / Rs. {totalAmount.toFixed(2)}
-              </span>
+            {/* Round-off Adjustment (Write-off) */}
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: 'var(--radius-md)', border: '1px dashed rgba(255,255,255,0.08)', marginTop: '8px', marginBottom: '12px' }}>
+              <div style={{ flex: 1, textAlign: 'left' }}>
+                <span style={{ fontSize: '12px', fontWeight: '700', color: 'var(--text-secondary)' }}>ROUND-OFF ADJUSTMENT (WRITE-OFF)</span>
+                <p style={{ fontSize: '10.5px', color: 'var(--text-muted)', marginTop: '2px' }}>Write off small decimal balances (e.g. 0.05, 1.00) from the client due amount.</p>
+              </div>
+              <div style={{ width: '120px' }}>
+                <input
+                  type="number"
+                  className="form-input mono"
+                  style={{ padding: '8px 12px', fontSize: '13.5px', textAlign: 'right', fontWeight: '600', color: '#f59e0b' }}
+                  placeholder="0.00"
+                  value={writeOffAmount || ''}
+                  onChange={handleWriteOffChange}
+                  step="0.01"
+                  min="0"
+                />
+              </div>
             </div>
+
+            {/* Calculations info */}
+            <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13.5px', color: 'var(--text-secondary)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Paid (Splits Total):</span>
+                <span className="mono">Rs. {formatCurrency(paymentSplits.reduce((s,p)=>s+p.amount,0))}</span>
+              </div>
+              {parseFloat(writeOffAmount || 0) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f59e0b' }}>
+                  <span>Round-off Write-off:</span>
+                  <span className="mono">-Rs. {formatCurrency(parseFloat(writeOffAmount))}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '6px', marginTop: '2px' }}>
+                <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Total Payments Aggregated:</span>
+                <span className="mono" style={{
+                  fontWeight: '700',
+                  color: Math.abs(paymentSplits.reduce((s,p)=>s+p.amount,0) + parseFloat(writeOffAmount || 0) - totalAmount) < 0.01 ? 'var(--success)' : 'var(--danger)'
+                }}>
+                  Rs. {formatCurrency(paymentSplits.reduce((s,p)=>s+p.amount,0) + parseFloat(writeOffAmount || 0))} / Rs. {formatCurrency(totalAmount)}
+                </span>
+              </div>
+            </div>
+
+            {/* Real-time Cash Change / Balance Due Display */}
+            {hasCashPayment && cashReceivedEntered && (
+              <div style={{
+                marginTop: '16px',
+                padding: '12px 16px',
+                borderRadius: 'var(--radius-md)',
+                background: totalCashReceived >= totalCashAmount ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                border: totalCashReceived >= totalCashAmount ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                    CASH RECEIVED TOTAL:
+                  </span>
+                  <span className="mono" style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-primary)' }}>
+                    Rs. {formatCurrency(totalCashReceived)}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: '8px' }}>
+                  {totalCashReceived >= totalCashAmount ? (
+                    <>
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#10b981' }}>
+                        CHANGE BALANCE:
+                      </span>
+                      <span className="mono" style={{ fontSize: '18px', fontWeight: '800', color: '#10b981' }}>
+                        Rs. {formatCurrency(totalCashReceived - totalCashAmount)}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#ef4444' }}>
+                        BALANCE DUE:
+                      </span>
+                      <span className="mono" style={{ fontSize: '18px', fontWeight: '800', color: '#ef4444' }}>
+                        Rs. {formatCurrency(totalCashAmount - totalCashReceived)}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
               <button className="btn btn-secondary" onClick={() => setShowCheckoutModal(false)}>Close</button>
               <button 
                 className="btn btn-primary"
                 onClick={handleCheckoutSubmit}
-                disabled={Math.abs(paymentSplits.reduce((s,p)=>s+p.amount,0) - totalAmount) > 0.01 || !!discountError}
+                disabled={Math.abs(paymentSplits.reduce((s,p)=>s+p.amount,0) + parseFloat(writeOffAmount || 0) - totalAmount) > 0.01 || !!discountError}
               >
                 Complete Payment
               </button>
@@ -1070,10 +1679,31 @@ export default function Register({ setToast }) {
             
             {/* The printable receipt container */}
             <div className="receipt-wrapper printable-receipt-modal">
-              <div className="receipt-header">
-                <div className="receipt-title">SELLMAX PRO</div>
-                <div style={{ fontSize: '11px', color: '#64748b' }}>Store ID: #001 | LabaqaBCMS 2026</div>
-                <div style={{ fontSize: '10px', marginTop: '4px' }}>{completedOrderDetails.order.CompanyName || 'SellMax Retail Ltd'}</div>
+              <div className="receipt-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                {companyInfo?.LogoURL && (
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
+                    <img 
+                      src={getCompanyLogoUrl(companyInfo.LogoURL)} 
+                      alt="Company Logo" 
+                      style={{ maxHeight: '50px', maxWidth: '180px', objectFit: 'contain' }} 
+                    />
+                  </div>
+                )}
+                <div className="receipt-title" style={{ textTransform: 'uppercase', fontSize: '14px', fontWeight: 'bold' }}>
+                  {companyInfo?.Name || 'SELLMAX PRO'}
+                </div>
+                <div style={{ fontSize: '10.5px', color: '#475569', lineHeight: '1.4', textAlign: 'center' }}>
+                  {companyInfo?.AddressLine1 && <div>{companyInfo.AddressLine1}</div>}
+                  {companyInfo?.AddressLine2 && <div>{companyInfo.AddressLine2}</div>}
+                  {(companyInfo?.City || companyInfo?.PostalCode) && (
+                    <div>{companyInfo.City}{companyInfo.PostalCode ? `, ${companyInfo.PostalCode}` : ''}</div>
+                  )}
+                  {(companyInfo?.TelephoneNumber || companyInfo?.MobileNumber) && (
+                    <div>Tel: {companyInfo.TelephoneNumber || companyInfo.MobileNumber}</div>
+                  )}
+                  {companyInfo?.Email && <div>Email: {companyInfo.Email}</div>}
+                  {companyInfo?.Website && <div>{companyInfo.Website}</div>}
+                </div>
               </div>
 
               <div className="receipt-details">
@@ -1094,9 +1724,16 @@ export default function Register({ setToast }) {
                 <tbody>
                   {completedOrderDetails.items.map((item, i) => (
                     <tr key={i}>
-                      <td>{item.ProductName}</td>
+                      <td>
+                        <div>{item.ProductName}</div>
+                        {item.OriginalPrice && Number(item.OriginalPrice) !== Number(item.Price) && (
+                          <div style={{ fontSize: '10px', color: '#64748b' }}>
+                            Orig: <span style={{ textDecoration: 'line-through', color: '#d97706' }}>Rs. {formatCurrency(item.OriginalPrice)}</span>
+                          </div>
+                        )}
+                      </td>
                       <td>{Number(item.Quantity)} {item.UOM || 'pcs'}</td>
-                      <td style={{ textAlign: 'right' }}>Rs. {Number(item.Subtotal).toFixed(2)}</td>
+                      <td style={{ textAlign: 'right' }}>Rs. {formatCurrency(item.Subtotal)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1105,37 +1742,69 @@ export default function Register({ setToast }) {
               <div className="receipt-summary-area">
                 <div className="receipt-summary-row">
                   <span>Subtotal:</span>
-                  <span>Rs. {Number(completedOrderDetails.order.Subtotal).toFixed(2)}</span>
+                  <span>Rs. {formatCurrency(completedOrderDetails.order.Subtotal)}</span>
                 </div>
                 {Number(completedOrderDetails.order.DiscountAmount) > 0 && (
                   <div className="receipt-summary-row">
                     <span>Discount:</span>
-                    <span>-Rs. {Number(completedOrderDetails.order.DiscountAmount).toFixed(2)}</span>
+                    <span>-Rs. {formatCurrency(completedOrderDetails.order.DiscountAmount)}</span>
                   </div>
                 )}
                 <div className="receipt-summary-row">
-                  <span>Tax (10%):</span>
-                  <span>Rs. {Number(completedOrderDetails.order.TaxAmount).toFixed(2)}</span>
+                  <span>VAT:</span>
+                  <span>Rs. {formatCurrency(completedOrderDetails.order.TaxAmount)}</span>
                 </div>
                 <div className="receipt-summary-row total">
                   <span>TOTAL PAID:</span>
-                  <span>Rs. {Number(completedOrderDetails.order.TotalAmount).toFixed(2)}</span>
+                  <span>Rs. {formatCurrency(completedOrderDetails.order.TotalAmount)}</span>
                 </div>
               </div>
 
               <div style={{ fontSize: '11px', borderTop: '1px dashed #000', paddingTop: '6px' }}>
                 <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Payments:</div>
-                {completedOrderDetails.payments.map((p, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px' }}>
-                    <span>- {p.Method} {p.ReferenceNumber ? `(${p.ReferenceNumber})` : ''}</span>
-                    <span>Rs. {Number(p.Amount).toFixed(2)}</span>
-                  </div>
-                ))}
+                {completedOrderDetails.payments.map((p, i) => {
+                  const isCash = p.Method === 'Cash';
+                  let recv = null;
+                  let change = null;
+                  if (isCash && p.ReferenceNumber && p.ReferenceNumber.startsWith('Recv:')) {
+                    const parts = p.ReferenceNumber.split(',');
+                    parts.forEach(part => {
+                      if (part.startsWith('Recv:')) recv = parseFloat(part.replace('Recv:', ''));
+                      if (part.startsWith('Change:')) change = parseFloat(part.replace('Change:', ''));
+                    });
+                  }
+                  
+                  return (
+                    <div key={i} style={{ marginBottom: '6px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px' }}>
+                        <span>- {p.Method} {(!isCash && p.ReferenceNumber) ? `(${p.ReferenceNumber})` : ''}</span>
+                        <span>Rs. {formatCurrency(p.Amount)}</span>
+                      </div>
+                      {recv !== null && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '10px', color: '#475569', fontSize: '10px', marginTop: '2px' }}>
+                          <span>Amount Received:</span>
+                          <span>Rs. {formatCurrency(recv)}</span>
+                        </div>
+                      )}
+                      {change !== null && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '10px', color: '#475569', fontSize: '10px', marginTop: '2px' }}>
+                          <span>Change Balance:</span>
+                          <span>Rs. {formatCurrency(change)}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="receipt-footer">
                 <p>Thank you for shopping with us!</p>
-                <p>System powered by SellMax Pro POS</p>
+                <div style={{ marginTop: '8px' }}>
+                  <strong>Exchange Policy</strong>
+                  <p style={{ marginTop: '2px', fontSize: '9.5px', lineHeight: '1.3' }}>A one-time exchange is allowed within two days of purchase, provided the original bill is available.</p>
+                  <p style={{ marginTop: '2px', fontSize: '9.5px', lineHeight: '1.3' }}>No cash refunds will be issued under any circumstances.</p>
+                </div>
+                <p style={{ marginTop: '8px', fontSize: '9px', opacity: 0.8 }}>System powered by SellMax Pro POS</p>
               </div>
             </div>
 
@@ -1147,6 +1816,114 @@ export default function Register({ setToast }) {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================================
+         MODAL: PRICE OVERRIDE
+         ============================================================================ */}
+      {showOverrideModal && overrideItem && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ width: '420px' }}>
+            <h3 style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <DollarSign size={20} style={{ color: 'var(--primary)' }} />
+              Edit Item Price
+            </h3>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
+              Modify the selling price for <strong>{overrideItem.name}</strong> on this transaction.
+            </p>
+
+            <div className="form-group">
+              <label className="form-label">Original Price</label>
+              <div style={{ fontSize: '14px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', padding: '8px 0' }}>
+                Rs. {formatCurrency(overrideItem.dbProduct?.Price ?? overrideItem.price)}
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">New Price (Rs.)</label>
+              <input
+                type="number"
+                className="form-input mono"
+                placeholder="Enter new price"
+                value={overridePriceVal}
+                onChange={(e) => {
+                  setOverridePriceVal(e.target.value);
+                  setOverrideError('');
+                }}
+                step="0.01"
+                min="0.01"
+                autoFocus
+              />
+            </div>
+
+            {/* Show PIN field if the new price would require manager approval */}
+            {(() => {
+              const np = parseFloat(overridePriceVal);
+              const needsPin = !isNaN(np) && checkOverrideNeedsPin(np, overrideItem?.dbProduct);
+              return needsPin ? (
+                <div className="form-group" style={{ marginTop: '4px' }}>
+                  <label className="form-label" style={{ color: 'var(--warning)' }}>
+                    ⚠ Manager PIN Required
+                  </label>
+                  <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '8px', lineHeight: 1.4 }}>
+                    This price exceeds the allowed discount limit. A manager PIN is needed to authorize.
+                  </p>
+                  <input
+                    type="password"
+                    className="form-input"
+                    placeholder="Enter manager PIN"
+                    value={overridePin}
+                    onChange={(e) => { setOverridePin(e.target.value); setOverrideError(''); }}
+                    maxLength={8}
+                  />
+                </div>
+              ) : null;
+            })()}
+
+            {overrideError && (
+              <div style={{
+                background: 'var(--danger-bg)', border: '1px solid rgba(239, 68, 68, 0.2)',
+                padding: '10px 12px', borderRadius: 'var(--radius-sm)',
+                color: '#fca5a5', fontSize: '12px', marginTop: '8px'
+              }}>
+                {overrideError}
+              </div>
+            )}
+
+            {/* Savings preview */}
+            {(() => {
+              const np = parseFloat(overridePriceVal);
+              const origP = overrideItem.dbProduct?.Price ?? overrideItem.price;
+              if (!isNaN(np) && np !== origP) {
+                const diff = origP - np;
+                const pct = (Math.abs(diff) / origP * 100).toFixed(1);
+                return (
+                  <div style={{
+                    marginTop: '12px', padding: '10px 12px', borderRadius: 'var(--radius-sm)',
+                    background: diff > 0 ? 'rgba(245, 158, 11, 0.08)' : 'rgba(16, 185, 129, 0.08)',
+                    border: diff > 0 ? '1px solid rgba(245,158,11,0.2)' : '1px solid rgba(16,185,129,0.2)',
+                    fontSize: '12px', display: 'flex', justifyContent: 'space-between'
+                  }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>
+                      {diff > 0 ? '📉 Price Reduction' : '📈 Price Increase'}
+                    </span>
+                    <strong style={{ color: diff > 0 ? '#f59e0b' : '#10b981' }}>
+                      {diff > 0 ? '-' : '+'}Rs. {formatCurrency(Math.abs(diff))} ({pct}%)
+                    </strong>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '24px' }}>
+              <button className="btn btn-secondary" onClick={() => setShowOverrideModal(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleOverrideSubmit}>
+                <DollarSign size={15} /> Apply Price
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -206,6 +206,17 @@ class UserRepository {
     const result = await db.query(sqlQuery);
     return result.recordset;
   }
+
+  async getActiveManagersForPin() {
+    const sqlQuery = `
+      SELECT u.UserID, u.Username, u.PINHash, r.RoleName
+      FROM dbo.Users u
+      INNER JOIN dbo.Roles r ON u.RoleID = r.RoleID
+      WHERE u.IsActive = 1 AND u.RoleID IN (1, 2, 3) AND u.PINHash IS NOT NULL
+    `;
+    const result = await db.query(sqlQuery);
+    return result.recordset;
+  }
 }
 
 module.exports = new UserRepository();

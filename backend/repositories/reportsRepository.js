@@ -61,6 +61,32 @@ class ReportsRepository {
     const result = await db.query(sqlQuery, { CompanyID: companyId });
     return result.recordset;
   }
+
+  async getPriceOverridesLog(companyId, startDate = null, endDate = null) {
+    let sqlQuery = `
+      SELECT po.*, 
+             p.Name AS ProductName, p.SKU, p.Barcode,
+             u.Username AS CashierName,
+             m.Username AS ManagerName
+      FROM dbo.PriceOverrides po
+      INNER JOIN dbo.Products p ON po.ProductID = p.ProductID
+      INNER JOIN dbo.Users u ON po.UserID = u.UserID
+      LEFT JOIN dbo.Users m ON po.ApprovedByUserID = m.UserID
+      WHERE p.CompanyID = @CompanyID
+    `;
+    const params = { CompanyID: companyId };
+
+    if (startDate && endDate) {
+      sqlQuery += ` AND po.CreatedAt BETWEEN @StartDate AND @EndDate`;
+      params.StartDate = new Date(startDate);
+      params.EndDate = new Date(endDate);
+    }
+
+    sqlQuery += ` ORDER BY po.CreatedAt DESC`;
+
+    const result = await db.query(sqlQuery, params);
+    return result.recordset;
+  }
 }
 
 module.exports = new ReportsRepository();

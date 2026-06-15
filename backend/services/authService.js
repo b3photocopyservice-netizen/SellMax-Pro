@@ -189,6 +189,26 @@ class AuthService {
   async getActiveUsersForPin() {
     return await userRepository.getActiveUsersForPin();
   }
+
+  async verifyManagerPin(pin) {
+    const activeManagers = await userRepository.getActiveManagersForPin();
+    for (const mgr of activeManagers) {
+      if (mgr.PINHash) {
+        const isMatch = await bcrypt.compare(pin.toString(), mgr.PINHash);
+        if (isMatch) {
+          return {
+            success: true,
+            user: {
+              userId: mgr.UserID,
+              username: mgr.Username,
+              roleName: mgr.RoleName
+            }
+          };
+        }
+      }
+    }
+    return { success: false, error: 'Invalid manager PIN.' };
+  }
 }
 
 module.exports = new AuthService();

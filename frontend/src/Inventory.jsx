@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import formatCurrency from './utils/formatCurrency';
 import { useAuth } from './contexts/AuthContext';
 import { Search, Plus, Edit2, Trash2, Tag, RefreshCw, AlertTriangle, Ruler, Award, Calendar, Boxes, Clock } from 'lucide-react';
 
@@ -663,8 +664,8 @@ export default function Inventory({ setToast }) {
                       </td>
                       <td className="mono">{p.Barcode || '--'}</td>
                       <td>{p.CategoryName}</td>
-                      <td className="mono">Rs. {Number(p.Cost).toFixed(2)}</td>
-                      <td className="mono" style={{ color: 'var(--accent)', fontWeight: '600' }}>Rs. {Number(p.Price).toFixed(2)}</td>
+                      <td className="mono">Rs. {formatCurrency(p.Cost)}</td>
+                      <td className="mono" style={{ color: 'var(--accent)', fontWeight: '600' }}>Rs. {formatCurrency(p.Price)}</td>
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span className="mono" style={{ 

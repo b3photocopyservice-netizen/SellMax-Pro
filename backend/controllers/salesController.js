@@ -33,8 +33,24 @@ router.post('/hold', authenticateToken, checkPermission('HOLD_RESUME_SALE'), asy
   try {
     const companyId = req.user.companyId;
     const userId = req.user.userId;
-    const orderId = await salesService.holdSale(req.body, companyId, userId);
-    res.status(201).json({ orderId, message: 'Sale suspended successfully.' });
+    const result = await salesService.holdSale(req.body, companyId, userId);
+    res.status(201).json({ 
+      orderId: result.orderId, 
+      heldBillNumber: result.heldBillNumber, 
+      message: 'Sale suspended successfully.' 
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/sales/held/:id
+router.delete('/held/:id', authenticateToken, checkPermission('HOLD_RESUME_SALE'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const orderId = parseInt(req.params.id, 10);
+    await salesService.cancelHeldSale(orderId, companyId);
+    res.json({ message: 'Suspended sale cancelled successfully.' });
   } catch (err) {
     next(err);
   }

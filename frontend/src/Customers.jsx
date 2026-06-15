@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { Search, Plus, Edit2, RefreshCw, Award, CreditCard } from 'lucide-react';
+import formatCurrency from './utils/formatCurrency';
 
 export default function Customers({ setToast }) {
   const { token, API_URL, hasPermission } = useAuth();
@@ -199,12 +200,12 @@ export default function Customers({ setToast }) {
                           </span>
                         </td>
                         <td className="mono">{c.LoyaltyPoints} pts</td>
-                        <td className="mono">Rs. {Number(c.CreditLimit).toFixed(2)}</td>
+                        <td className="mono">Rs. {formatCurrency(c.CreditLimit)}</td>
                         <td className="mono" style={{ color: c.CurrentBalance > 0 ? 'var(--danger)' : 'var(--text-secondary)' }}>
-                          Rs. {Number(c.CurrentBalance).toFixed(2)}
+                          Rs. {formatCurrency(c.CurrentBalance)}
                         </td>
                         <td className="mono" style={{ color: 'var(--success)' }}>
-                          Rs. {Number(availableCredit).toFixed(2)}
+                          Rs. {formatCurrency(availableCredit)}
                         </td>
                         {canManage && (
                           <td style={{ textAlign: 'right' }}>

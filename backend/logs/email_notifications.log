@@ -111,3 +111,16 @@ Date       | Ref / Doc No  | Type                | Debit      | Credit     | Run
 --------------------------------------------------------------------------------
 Company: EziBy Smart Shopping.lk | Phone: 0779818879 | Address: Hajiyar Road, Nintavur
 ================================================================================
+[2026-06-13T07:26:55.441Z] Email Sent to Store Admin: Low Stock Alert: Product 'Anchor' is at 9 pcs (Threshold: 10).
+[2026-06-13T08:01:59.052Z] Email Sent to Store Admin: Low Stock Alert: Product 'Chocolate Chip Muffin' is at 1 pcs (Threshold: 8).
+[2026-06-13T08:10:28.992Z] Email Sent to Store Admin: Low Stock Alert: Product 'Chocolate Chip Muffin' is at 0 pcs (Threshold: 8).
+[2026-06-13T08:25:53.753Z] Email Sent to Store Admin: Low Stock Alert: Product 'Anchor' is at 8 pcs (Threshold: 10).
+[2026-06-13T11:32:33.764Z] Email Sent to Store Admin: Low Stock Alert: Product 'Test Brown Sugar' is at 0 kg (Threshold: 10.25).
+[2026-06-14T02:49:41.358Z] Email Sent to Store Admin: Low Stock Alert: Product 'Chocolate Chip Muffin' is at 0 pcs (Threshold: 8).
+[2026-06-14T02:49:41.358Z] Email Sent to Store Admin: Low Stock Alert: Product 'Test Brown Sugar' is at 0 kg (Threshold: 10.25).
+[2026-06-14T17:31:10.016Z] Email Sent to Store Admin: Low Stock Alert: Product 'Anchor' is at 8 pcs (Threshold: 10).
+[2026-06-15T01:03:48.861Z] Email Sent to Store Admin: Low Stock Alert: Product 'Chocolate Chip Muffin' is at 0 pcs (Threshold: 8).
+[2026-06-15T01:03:48.861Z] Email Sent to Store Admin: Low Stock Alert: Product 'Test Brown Sugar' is at 0 kg (Threshold: 10.25).
+[2026-06-15T01:03:48.861Z] Email Sent to Store Admin: Low Stock Alert: Product 'Anchor' is at 8 pcs (Threshold: 10).
+[2026-06-15T01:23:04.461Z] Email Sent to Store Admin: Low Stock Alert: Product 'Anchor' is at 6 pcs (Threshold: 10).
+[2026-06-15T01:45:07.580Z] Email Sent to Store Admin: Low Stock Alert: Product 'Anchor' is at 5 pcs (Threshold: 10).

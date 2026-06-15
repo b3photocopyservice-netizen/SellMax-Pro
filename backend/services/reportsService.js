@@ -20,6 +20,10 @@ class ReportsService {
   async getExpiryReport(companyId) {
     return await reportsRepository.getExpiryReport(companyId);
   }
+
+  async getPriceOverridesLog(companyId, startDate, endDate) {
+    return await reportsRepository.getPriceOverridesLog(companyId, startDate, endDate);
+  }
 }
 
 module.exports = new ReportsService();

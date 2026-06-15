@@ -49,6 +49,24 @@ router.post('/pin-login', async (req, res, next) => {
   }
 });
 
+// POST /api/auth/verify-pin
+router.post('/verify-pin', authenticateToken, async (req, res, next) => {
+  try {
+    const { pin } = req.body;
+    if (!pin) {
+      return res.status(400).json({ error: 'PIN is required.' });
+    }
+
+    const result = await authService.verifyManagerPin(pin);
+    if (!result.success) {
+      return res.status(401).json({ error: result.error });
+    }
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/auth/profile
 router.get('/profile', authenticateToken, async (req, res, next) => {
   try {

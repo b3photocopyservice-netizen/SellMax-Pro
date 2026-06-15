@@ -1,6 +1,15 @@
 const db = require('../config/db');
 const customerRepository = require('./customerRepository');
 
+const getOriginalPrice = (item) => {
+  if (!item) return 0.00;
+  const orig = item.originalPrice !== undefined ? item.originalPrice : item.OriginalPrice;
+  const current = item.price !== undefined ? item.price : item.Price;
+  const val = (orig !== undefined && orig !== null) ? orig : current;
+  const num = parseFloat(val);
+  return isNaN(num) ? 0.00 : num;
+};
+
 class SalesRepository {
   async getSalesHistory(companyId, filters = {}) {
     let sqlQuery = `
@@ -139,10 +148,11 @@ class SalesRepository {
             allocationRequest.input('Quantity', db.sql.Decimal(18, 3), deduction);
             allocationRequest.input('Subtotal', db.sql.Decimal(18, 2), Number((item.price * deduction).toFixed(2)));
             allocationRequest.input('BatchNo', db.sql.NVarChar(50), batch.BatchNo);
+            allocationRequest.input('OriginalPrice', db.sql.Decimal(18, 2), getOriginalPrice(item));
 
             await allocationRequest.query(`
-              INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, BatchNo)
-              VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, @BatchNo)
+              INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, BatchNo, OriginalPrice)
+              VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, @BatchNo, @OriginalPrice)
             `);
 
             remainingQty -= deduction;
@@ -157,10 +167,11 @@ class SalesRepository {
             fallbackItemReq.input('Cost', db.sql.Decimal(18, 2), item.cost);
             fallbackItemReq.input('Quantity', db.sql.Decimal(18, 3), remainingQty);
             fallbackItemReq.input('Subtotal', db.sql.Decimal(18, 2), Number((item.price * remainingQty).toFixed(2)));
+            fallbackItemReq.input('OriginalPrice', db.sql.Decimal(18, 2), getOriginalPrice(item));
 
             await fallbackItemReq.query(`
-              INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, BatchNo)
-              VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, NULL)
+              INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, BatchNo, OriginalPrice)
+              VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, NULL, @OriginalPrice)
             `);
           }
 
@@ -180,10 +191,11 @@ class SalesRepository {
           itemRequest.input('Cost', db.sql.Decimal(18, 2), item.cost);
           itemRequest.input('Quantity', db.sql.Decimal(18, 3), item.quantity);
           itemRequest.input('Subtotal', db.sql.Decimal(18, 2), item.subtotal);
+          itemRequest.input('OriginalPrice', db.sql.Decimal(18, 2), getOriginalPrice(item));
 
           await itemRequest.query(`
-            INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, BatchNo)
-            VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, NULL)
+            INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, BatchNo, OriginalPrice)
+            VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, NULL, @OriginalPrice)
           `);
 
           const stockRequest = new db.sql.Request(transaction);
@@ -193,6 +205,24 @@ class SalesRepository {
             UPDATE dbo.Products
             SET Stock = Stock - @Quantity
             WHERE ProductID = @ProductID
+          `);
+        }
+      }
+
+      // 2b. Insert Price Overrides Log
+      for (const item of saleData.items) {
+        if (item.isOverridden) {
+          const overrideRequest = new db.sql.Request(transaction);
+          overrideRequest.input('OrderID', db.sql.Int, orderId);
+          overrideRequest.input('ProductID', db.sql.Int, item.productId);
+          overrideRequest.input('OriginalPrice', db.sql.Decimal(18, 2), item.originalPrice !== undefined ? item.originalPrice : item.price);
+          overrideRequest.input('OverriddenPrice', db.sql.Decimal(18, 2), item.price);
+          overrideRequest.input('UserID', db.sql.Int, userId);
+          overrideRequest.input('ApprovedByUserID', db.sql.Int, item.approvedByUserId || null);
+
+          await overrideRequest.query(`
+            INSERT INTO dbo.PriceOverrides (OrderID, ProductID, OriginalPrice, OverriddenPrice, UserID, ApprovedByUserID)
+            VALUES (@OrderID, @ProductID, @OriginalPrice, @OverriddenPrice, @UserID, @ApprovedByUserID)
           `);
         }
       }
@@ -256,7 +286,7 @@ class SalesRepository {
       orderRequest.input('TaxAmount', db.sql.Decimal(18, 2), saleData.taxAmount || 0.00);
       orderRequest.input('TotalAmount', db.sql.Decimal(18, 2), saleData.totalAmount);
       orderRequest.input('Status', db.sql.NVarChar(20), 'Held');
-      orderRequest.input('HeldNote', db.sql.NVarChar(255), saleData.heldNote || 'No description');
+      orderRequest.input('HeldNote', db.sql.NVarChar(255), saleData.heldNote || null);
 
       const orderResult = await orderRequest.query(`
         INSERT INTO dbo.SalesOrders (CompanyID, UserID, CustomerID, Subtotal, DiscountAmount, TaxAmount, TotalAmount, Status, HeldNote)
@@ -265,6 +295,19 @@ class SalesRepository {
       `);
       
       const orderId = orderResult.recordset[0].OrderID;
+
+      // Determine the HeldBillNumber (re-use if passed, otherwise auto-generate sequential number)
+      const billNumber = saleData.heldBillNumber || `HB-${1000 + orderId}`;
+
+      // Update the HeldBillNumber column
+      const updateRequest = new db.sql.Request(transaction);
+      updateRequest.input('OrderID', db.sql.Int, orderId);
+      updateRequest.input('HeldBillNumber', db.sql.NVarChar(50), billNumber);
+      await updateRequest.query(`
+        UPDATE dbo.SalesOrders
+        SET HeldBillNumber = @HeldBillNumber
+        WHERE OrderID = @OrderID
+      `);
 
       // 2. Insert Items (Stock is NOT reduced for held sales)
       for (const item of saleData.items) {
@@ -275,15 +318,16 @@ class SalesRepository {
         itemRequest.input('Cost', db.sql.Decimal(18, 2), item.cost);
         itemRequest.input('Quantity', db.sql.Decimal(18, 3), item.quantity);
         itemRequest.input('Subtotal', db.sql.Decimal(18, 2), item.subtotal);
+        itemRequest.input('OriginalPrice', db.sql.Decimal(18, 2), getOriginalPrice(item));
 
         await itemRequest.query(`
-          INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal)
-          VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal)
+          INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, OriginalPrice)
+          VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, @OriginalPrice)
         `);
       }
 
       await transaction.commit();
-      return orderId;
+      return { orderId, heldBillNumber: billNumber };
     } catch (err) {
       await transaction.rollback();
       throw err;
@@ -292,9 +336,9 @@ class SalesRepository {
 
   async getHeldSales(companyId) {
     const sqlQuery = `
-      SELECT so.*, c.Name AS CustomerName
+      SELECT so.*, u.Username AS CashierName
       FROM dbo.SalesOrders so
-      LEFT JOIN dbo.Customers c ON so.CustomerID = c.CustomerID
+      INNER JOIN dbo.Users u ON so.UserID = u.UserID
       WHERE so.CompanyID = @CompanyID AND so.Status = 'Held'
       ORDER BY so.OrderDate DESC
     `;
@@ -306,11 +350,27 @@ class SalesRepository {
     const details = await this.getSaleDetails(orderId, companyId);
     if (!details) return null;
 
-    // Delete the held order from database
-    const deleteQuery = `DELETE FROM dbo.SalesOrders WHERE OrderID = @OrderID AND CompanyID = @CompanyID AND Status = 'Held'`;
-    await db.query(deleteQuery, { OrderID: orderId, CompanyID: companyId });
+    // Delete items first to prevent FK orphaned records
+    const deleteItemsQuery = `DELETE FROM dbo.OrderItems WHERE OrderID = @OrderID`;
+    await db.query(deleteItemsQuery, { OrderID: orderId });
+
+    // Then delete the held order
+    const deleteOrderQuery = `DELETE FROM dbo.SalesOrders WHERE OrderID = @OrderID AND CompanyID = @CompanyID AND Status = 'Held'`;
+    await db.query(deleteOrderQuery, { OrderID: orderId, CompanyID: companyId });
 
     return details;
+  }
+
+  async deleteHeldSale(orderId, companyId) {
+    // Delete the items first to prevent constraint violations
+    const deleteItemsQuery = `DELETE FROM dbo.OrderItems WHERE OrderID = @OrderID`;
+    await db.query(deleteItemsQuery, { OrderID: orderId });
+
+    // Then delete the order row
+    const deleteOrderQuery = `DELETE FROM dbo.SalesOrders WHERE OrderID = @OrderID AND CompanyID = @CompanyID AND Status = 'Held'`;
+    const result = await db.query(deleteOrderQuery, { OrderID: orderId, CompanyID: companyId });
+
+    return result.rowsAffected[0] > 0;
   }
 
   async processReturn(returnRequest, companyId, userId) {
@@ -350,10 +410,11 @@ class SalesRepository {
         itemRequest.input('Quantity', db.sql.Decimal(18, 3), -item.quantity);
         itemRequest.input('Subtotal', db.sql.Decimal(18, 2), -item.subtotal);
         itemRequest.input('BatchNo', db.sql.NVarChar(50), item.batchNo || null);
+        itemRequest.input('OriginalPrice', db.sql.Decimal(18, 2), getOriginalPrice(item));
 
         await itemRequest.query(`
-          INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, BatchNo)
-          VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, @BatchNo)
+          INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, BatchNo, OriginalPrice)
+          VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, @BatchNo, @OriginalPrice)
         `);
 
         if (item.batchNo) {

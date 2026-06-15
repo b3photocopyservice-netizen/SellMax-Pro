@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import formatCurrency from './utils/formatCurrency';
 import { useAuth } from './contexts/AuthContext';
-import { Search, Calendar, RefreshCw, Printer, AlertTriangle, TrendingUp, ArrowLeftRight, CreditCard } from 'lucide-react';
+import { Search, Calendar, RefreshCw, Printer, AlertTriangle, TrendingUp, ArrowLeftRight, CreditCard, ShieldAlert } from 'lucide-react';
 
 export default function Reports({ setToast }) {
   const { token, API_URL, hasPermission } = useAuth();
   
   // Tab control
-  const [activeTab, setActiveTab] = useState('journal'); // 'journal', 'products', 'customers'
+  const [activeTab, setActiveTab] = useState('journal'); // 'journal', 'products', 'customers', 'price-overrides'
 
   // Reports filters
   const [startDate, setStartDate] = useState('');
@@ -17,11 +18,21 @@ export default function Reports({ setToast }) {
   const [salesJournal, setSalesJournal] = useState([]);
   const [productPerformance, setProductPerformance] = useState([]);
   const [customerStatement, setCustomerStatement] = useState([]);
+  const [priceOverridesLog, setPriceOverridesLog] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Modal / Invoice Detail View
   const [activeOrder, setActiveOrder] = useState(null);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [companyInfo, setCompanyInfo] = useState(null);
+
+  const getCompanyLogoUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+      return url;
+    }
+    return `${API_URL}${url}`;
+  };
   
   // Returns Flow
   const [showReturnModal, setShowReturnModal] = useState(false);
@@ -57,10 +68,33 @@ export default function Reports({ setToast }) {
         });
         if (res.ok) setCustomerStatement(await res.json());
       }
+      else if (activeTab === 'price-overrides') {
+        const res = await fetch(`${API_URL}/api/reports/price-overrides${queryParams}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) setPriceOverridesLog(await res.json());
+      }
     } catch (err) {
       console.error('Failed to load report data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCompanyInfo();
+  }, []);
+
+  const fetchCompanyInfo = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/company`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setCompanyInfo(await res.json());
+      }
+    } catch (err) {
+      console.error('Failed to load company config:', err);
     }
   };
 
@@ -80,7 +114,178 @@ export default function Reports({ setToast }) {
   };
 
   const handlePrint = () => {
-    window.print();
+    const order = activeOrder?.order;
+    const items = activeOrder?.items || [];
+    const payments = activeOrder?.payments || [];
+    if (!order) return;
+
+    const logoUrl = companyInfo?.LogoURL ? getCompanyLogoUrl(companyInfo.LogoURL) : null;
+
+    const paymentsHtml = payments.map(p => {
+      const isCash = p.Method === 'Cash';
+      let recv = null, change = null;
+      if (isCash && p.ReferenceNumber && p.ReferenceNumber.startsWith('Recv:')) {
+        p.ReferenceNumber.split(',').forEach(part => {
+          if (part.startsWith('Recv:')) recv = parseFloat(part.replace('Recv:', ''));
+          if (part.startsWith('Change:')) change = parseFloat(part.replace('Change:', ''));
+        });
+      }
+      return `
+        <div class="pay-row">
+          <span>- ${p.Method}${!isCash && p.ReferenceNumber ? ` (${p.ReferenceNumber})` : ''}</span>
+          <span>Rs. ${Number(p.Amount).toFixed(2)}</span>
+        </div>
+        ${recv !== null ? `<div class="pay-sub"><span>Received:</span><span>Rs. ${recv.toFixed(2)}</span></div>` : ''}
+        ${change !== null ? `<div class="pay-sub"><span>Change:</span><span>Rs. ${change.toFixed(2)}</span></div>` : ''}
+      `;
+    }).join('');
+
+    const itemsHtml = items.map(item => {
+      const hasOverride = item.OriginalPrice && Number(item.OriginalPrice) !== Number(item.Price);
+      const origHtml = hasOverride 
+        ? `<div style="font-size: 9px; color: #d97706;">Orig: <span style="text-decoration: line-through;">Rs. ${Number(item.OriginalPrice).toFixed(2)}</span></div>` 
+        : '';
+      return `
+        <tr>
+          <td>
+            <div>${item.ProductName}</div>
+            ${origHtml}
+          </td>
+          <td style="text-align:center">${Number(item.Quantity)} ${item.UOM || 'pcs'}</td>
+          <td style="text-align:right">Rs. ${Number(item.Subtotal).toFixed(2)}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const discountHtml = Number(order.DiscountAmount) > 0
+      ? `<div class="sum-row"><span>Discount:</span><span>-Rs. ${Number(order.DiscountAmount).toFixed(2)}</span></div>`
+      : '';
+
+    const addressParts = [
+      companyInfo?.AddressLine1,
+      companyInfo?.AddressLine2,
+      companyInfo?.City && companyInfo?.PostalCode
+        ? `${companyInfo.City}, ${companyInfo.PostalCode}`
+        : (companyInfo?.City || companyInfo?.PostalCode || ''),
+    ].filter(Boolean).join('<br>');
+
+    const contactParts = [
+      (companyInfo?.TelephoneNumber || companyInfo?.MobileNumber)
+        ? `Tel: ${companyInfo.TelephoneNumber || companyInfo.MobileNumber}`
+        : null,
+      companyInfo?.Email ? `Email: ${companyInfo.Email}` : null,
+      companyInfo?.Website || null,
+    ].filter(Boolean).join('<br>');
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Receipt #SM-${order.OrderID}</title>
+<style>
+  @page {
+    size: 80mm auto;
+    margin: 4mm 4mm;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 12px;
+    color: #000;
+    width: 100%;
+    background: white;
+  }
+  .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 6px; margin-bottom: 6px; }
+  .logo { max-height: 50px; max-width: 90%; object-fit: contain; margin-bottom: 4px; }
+  .company-name { font-size: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+  .company-sub { font-size: 11px; color: #111; line-height: 1.5; margin-top: 3px; }
+  .meta { font-size: 12px; line-height: 1.7; border-bottom: 1px dashed #000; padding-bottom: 5px; margin-bottom: 5px; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  thead th { font-size: 11px; font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 4px 2px; overflow: hidden; }
+  tbody td { font-size: 11px; padding: 3px 2px; vertical-align: top; word-break: break-word; overflow: hidden; }
+  .col-item { width: 52%; }
+  .col-qty  { width: 18%; text-align: center; }
+  .col-price{ width: 30%; text-align: right; }
+  .summary { border-top: 1px dashed #000; padding-top: 5px; margin-top: 5px; }
+  .sum-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+  .sum-total { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; margin-top: 4px; padding: 4px 0; }
+  .payments { border-top: 1px dashed #000; margin-top: 5px; padding-top: 5px; font-size: 12px; }
+  .pay-label { font-weight: bold; margin-bottom: 3px; font-size: 12px; }
+  .pay-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
+  .pay-sub { display: flex; justify-content: space-between; font-size: 11px; padding-left: 10px; color: #333; }
+  .status-row { font-size: 11px; text-align: center; margin-top: 4px; color: #333; }
+  .footer { text-align: center; border-top: 1px dashed #000; margin-top: 8px; padding-top: 6px; font-size: 11px; line-height: 1.6; color: #333; }
+</style>
+</head>
+<body>
+  <div class="header">
+    ${logoUrl ? `<div><img class="logo" src="${logoUrl}" alt="Logo"></div>` : ''}
+    <div class="company-name">${companyInfo?.Name || 'SELLMAX PRO'}</div>
+    ${addressParts || contactParts ? `<div class="company-sub">${[addressParts, contactParts].filter(Boolean).join('<br>')}</div>` : ''}
+  </div>
+
+  <div class="meta">
+    <div>INVOICE: #SM-${order.OrderID}</div>
+    <div>DATE: ${new Date(order.OrderDate).toLocaleString()}</div>
+    <div>CASHIER: ${order.Username}</div>
+    <div>CUSTOMER: ${order.CustomerName || 'Walk-in Customer'}</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="col-item" style="text-align:left">ITEM</th>
+        <th class="col-qty">QTY</th>
+        <th class="col-price">PRICE</th>
+      </tr>
+    </thead>
+    <tbody>${itemsHtml}</tbody>
+  </table>
+
+  <div class="summary">
+    <div class="sum-row"><span>Subtotal:</span><span>Rs. ${Number(order.Subtotal).toFixed(2)}</span></div>
+    ${discountHtml}
+    <div class="sum-row"><span>Tax:</span><span>Rs. ${Number(order.TaxAmount).toFixed(2)}</span></div>
+    <div class="sum-total"><span>TOTAL:</span><span>Rs. ${Number(order.TotalAmount).toFixed(2)}</span></div>
+  </div>
+
+  <div class="payments">
+    <div class="pay-label">Payments:</div>
+    ${paymentsHtml}
+    <div class="status-row">Status: ${order.Status}</div>
+  </div>
+
+  <div class="footer">
+    <p>Thank you for shopping with us!</p>
+    <div style="margin-top: 8px;">
+      <strong>Exchange Policy</strong>
+      <p style="margin-top: 2px; font-size: 10px; line-height: 1.3;">A one-time exchange is allowed within two days of purchase, provided the original bill is available.</p>
+      <p style="margin-top: 2px; font-size: 10px; line-height: 1.3;">No cash refunds will be issued under any circumstances.</p>
+    </div>
+    <p style="margin-top: 8px; font-size: 9px; opacity: 0.8;">Powered by SellMax Pro POS</p>
+  </div>
+</body>
+</html>`;
+
+    const popup = window.open('', '_blank', 'width=320,height=600,toolbar=0,menubar=0,location=0,status=0');
+    if (!popup) {
+      setToast({ type: 'error', message: 'Pop-up blocked! Allow pop-ups for this site to print receipts.' });
+      return;
+    }
+    popup.document.write(html);
+    popup.document.close();
+    popup.focus();
+    popup.onload = () => {
+      popup.print();
+      popup.onafterprint = () => {
+        popup.close();
+        setTimeout(() => setShowInvoiceModal(false), 500);
+      };
+      setTimeout(() => {
+        if (!popup.closed) popup.close();
+        setTimeout(() => setShowInvoiceModal(false), 500);
+      }, 30000);
+    };
   };
 
   // Set up return items dialog
@@ -188,6 +393,13 @@ export default function Reports({ setToast }) {
         >
           Customer Debts & Loyalty audits
         </button>
+        <button 
+          className={`category-tab ${activeTab === 'price-overrides' ? 'active' : ''}`}
+          onClick={() => setActiveTab('price-overrides')}
+        >
+          <ShieldAlert size={14} style={{ display: 'inline', marginRight: '6px' }} />
+          Price Overrides Log
+        </button>
       </div>
 
       {/* Filters Area */}
@@ -245,7 +457,7 @@ export default function Reports({ setToast }) {
                     <th>Cashier</th>
                     <th>Subtotal</th>
                     <th>Discount</th>
-                    <th>Tax (10%)</th>
+                    <th>VAT (Rs.)</th>
                     <th>Total Received</th>
                     <th>Status</th>
                   </tr>
@@ -264,12 +476,12 @@ export default function Reports({ setToast }) {
                         <td>{new Date(sale.OrderDate).toLocaleString()}</td>
                         <td>{sale.CustomerName || 'Walk-in Customer'}</td>
                         <td>{sale.Username}</td>
-                        <td className="mono">Rs. {Number(sale.Subtotal).toFixed(2)}</td>
+                        <td className="mono">Rs. {formatCurrency(sale.Subtotal)}</td>
                         <td className="mono" style={{ color: sale.DiscountAmount > 0 ? 'var(--warning)' : 'inherit' }}>
-                          Rs. {Number(sale.DiscountAmount).toFixed(2)}
+                          Rs. {formatCurrency(sale.DiscountAmount)}
                         </td>
-                        <td className="mono">Rs. {Number(sale.TaxAmount).toFixed(2)}</td>
-                        <td className="mono" style={{ color: 'var(--accent)', fontWeight: '600' }}>Rs. {Number(sale.TotalAmount).toFixed(2)}</td>
+                        <td className="mono">Rs. {formatCurrency(sale.TaxAmount)}</td>
+                        <td className="mono" style={{ color: 'var(--accent)', fontWeight: '600' }}>Rs. {formatCurrency(sale.TotalAmount)}</td>
                         <td>
                           <span style={{
                             padding: '3px 8px',
@@ -319,8 +531,8 @@ export default function Reports({ setToast }) {
                         <td className="mono">{item.SKU}</td>
                         <td>{item.CategoryName}</td>
                         <td className="mono" style={{ fontWeight: '700' }}>{item.UnitsSold} units</td>
-                        <td className="mono" style={{ color: 'var(--accent)' }}>Rs. {Number(item.GrossRevenue).toFixed(2)}</td>
-                        <td className="mono" style={{ color: 'var(--success)' }}>Rs. {Number(item.EstimatedProfit).toFixed(2)}</td>
+                        <td className="mono" style={{ color: 'var(--accent)' }}>Rs. {formatCurrency(item.GrossRevenue)}</td>
+                        <td className="mono" style={{ color: 'var(--success)' }}>Rs. {formatCurrency(item.EstimatedProfit)}</td>
                         <td className="mono">{item.CurrentStock} left</td>
                       </tr>
                     ))
@@ -359,17 +571,84 @@ export default function Reports({ setToast }) {
                         <td style={{ fontWeight: '600' }}>{cust.CustomerName}</td>
                         <td>{cust.Phone || '--'}</td>
                         <td className="mono" style={{ color: 'var(--primary)', fontWeight: '700' }}>{cust.LoyaltyPoints} pts</td>
-                        <td className="mono">Rs. {Number(cust.CreditLimit).toFixed(2)}</td>
+                        <td className="mono">Rs. {formatCurrency(cust.CreditLimit)}</td>
                         <td className="mono" style={{ color: cust.CurrentBalance > 0 ? 'var(--danger)' : 'inherit' }}>
-                          Rs. {Number(cust.CurrentBalance).toFixed(2)}
+                          Rs. {formatCurrency(cust.CurrentBalance)}
                         </td>
-                        <td className="mono" style={{ color: 'var(--success)' }}>Rs. {Number(cust.RemainingCredit).toFixed(2)}</td>
+                        <td className="mono" style={{ color: 'var(--success)' }}>Rs. {formatCurrency(cust.RemainingCredit)}</td>
                         <td>{cust.TotalOrdersCount} sales</td>
                         <td className="mono" style={{ color: 'var(--accent)', fontWeight: '600' }}>
-                          Rs. {Number(cust.TotalPurchasesValue).toFixed(2)}
+                          Rs. {formatCurrency(cust.TotalPurchasesValue)}
                         </td>
                       </tr>
                     ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* TAB 4: Price Overrides Log */}
+          {activeTab === 'price-overrides' && (
+            <div className="table-container">
+              <table className="table-glass">
+                <thead>
+                  <tr>
+                    <th>Timestamp</th>
+                    <th>Invoice ID</th>
+                    <th>Product</th>
+                    <th>SKU</th>
+                    <th>Original Price</th>
+                    <th>Overridden Price</th>
+                    <th>Variance</th>
+                    <th>Cashier</th>
+                    <th>Approved By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {priceOverridesLog.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No price overrides recorded in this period.
+                      </td>
+                    </tr>
+                  ) : (
+                    priceOverridesLog.map((log, i) => {
+                      const diff = Number(log.OriginalPrice) - Number(log.OverriddenPrice);
+                      const pct = log.OriginalPrice > 0 ? (diff / log.OriginalPrice) * 100 : 0;
+                      return (
+                        <tr key={i} onClick={() => log.OrderID && handleInvoiceClick(log.OrderID)} style={{ cursor: log.OrderID ? 'pointer' : 'default' }}>
+                          <td>{new Date(log.CreatedAt).toLocaleString()}</td>
+                          <td className="mono" style={{ fontWeight: '600' }}>#SM-{log.OrderID}</td>
+                          <td style={{ fontWeight: '600' }}>{log.ProductName}</td>
+                          <td className="mono">{log.SKU}</td>
+                          <td className="mono">Rs. {formatCurrency(log.OriginalPrice)}</td>
+                          <td className="mono" style={{ color: '#f59e0b', fontWeight: '600' }}>
+                            Rs. {formatCurrency(log.OverriddenPrice)}
+                          </td>
+                          <td className="mono" style={{ color: diff > 0 ? 'var(--danger)' : 'var(--success)' }}>
+                            {diff > 0 ? '-' : '+'}Rs. {formatCurrency(Math.abs(diff))} ({Math.abs(pct).toFixed(1)}%)
+                          </td>
+                          <td>{log.CashierName || '—'}</td>
+                          <td>
+                            {log.ManagerName ? (
+                              <span style={{
+                                padding: '3px 8px',
+                                borderRadius: '12px',
+                                fontSize: '11px',
+                                fontWeight: '700',
+                                background: 'rgba(139, 92, 246, 0.15)',
+                                color: '#a78bfa'
+                              }}>
+                                {log.ManagerName}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)' }}>System Allowed</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -386,10 +665,31 @@ export default function Reports({ setToast }) {
           <div className="modal-content" style={{ width: '450px', background: '#f8fafc', color: '#0f172a' }}>
             
             <div className="receipt-wrapper printable-receipt-modal">
-              <div className="receipt-header">
-                <div className="receipt-title">SELLMAX PRO</div>
-                <div style={{ fontSize: '11px', color: '#64748b' }}>Store ID: #001 | Invoice Details</div>
-                <div style={{ fontSize: '10px', marginTop: '4px' }}>{activeOrder.order.CompanyName || 'SellMax Retail Ltd'}</div>
+              <div className="receipt-header" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+                {companyInfo?.LogoURL && (
+                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
+                    <img 
+                      src={getCompanyLogoUrl(companyInfo.LogoURL)} 
+                      alt="Company Logo" 
+                      style={{ maxHeight: '50px', maxWidth: '180px', objectFit: 'contain' }} 
+                    />
+                  </div>
+                )}
+                <div className="receipt-title" style={{ textTransform: 'uppercase', fontSize: '14px', fontWeight: 'bold' }}>
+                  {companyInfo?.Name || 'SELLMAX PRO'}
+                </div>
+                <div style={{ fontSize: '10.5px', color: '#475569', lineHeight: '1.4', textAlign: 'center' }}>
+                  {companyInfo?.AddressLine1 && <div>{companyInfo.AddressLine1}</div>}
+                  {companyInfo?.AddressLine2 && <div>{companyInfo.AddressLine2}</div>}
+                  {(companyInfo?.City || companyInfo?.PostalCode) && (
+                    <div>{companyInfo.City}{companyInfo.PostalCode ? `, ${companyInfo.PostalCode}` : ''}</div>
+                  )}
+                  {(companyInfo?.TelephoneNumber || companyInfo?.MobileNumber) && (
+                    <div>Tel: {companyInfo.TelephoneNumber || companyInfo.MobileNumber}</div>
+                  )}
+                  {companyInfo?.Email && <div>Email: {companyInfo.Email}</div>}
+                  {companyInfo?.Website && <div>{companyInfo.Website}</div>}
+                </div>
               </div>
 
               <div className="receipt-details">
@@ -410,9 +710,16 @@ export default function Reports({ setToast }) {
                 <tbody>
                   {activeOrder.items.map((item, i) => (
                     <tr key={i}>
-                      <td>{item.ProductName}</td>
+                      <td>
+                        <div>{item.ProductName}</div>
+                        {item.OriginalPrice && Number(item.OriginalPrice) !== Number(item.Price) && (
+                          <div style={{ fontSize: '10px', color: '#64748b' }}>
+                            Orig: <span style={{ textDecoration: 'line-through', color: '#d97706' }}>Rs. {formatCurrency(item.OriginalPrice)}</span>
+                          </div>
+                        )}
+                      </td>
                       <td>{Number(item.Quantity)} {item.UOM || 'pcs'}</td>
-                      <td style={{ textAlign: 'right' }}>Rs. {Number(item.Subtotal).toFixed(2)}</td>
+                      <td style={{ textAlign: 'right' }}>Rs. {formatCurrency(item.Subtotal)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -421,37 +728,71 @@ export default function Reports({ setToast }) {
               <div className="receipt-summary-area">
                 <div className="receipt-summary-row">
                   <span>Subtotal:</span>
-                  <span>Rs. {Number(activeOrder.order.Subtotal).toFixed(2)}</span>
+                  <span>Rs. {formatCurrency(activeOrder.order.Subtotal)}</span>
                 </div>
                 {Number(activeOrder.order.DiscountAmount) > 0 && (
                   <div className="receipt-summary-row">
                     <span>Discount:</span>
-                    <span>-Rs. {Number(activeOrder.order.DiscountAmount).toFixed(2)}</span>
+                    <span>-Rs. {formatCurrency(activeOrder.order.DiscountAmount)}</span>
                   </div>
                 )}
                 <div className="receipt-summary-row">
                   <span>Tax:</span>
-                  <span>Rs. {Number(activeOrder.order.TaxAmount).toFixed(2)}</span>
+                  <span>Rs. {formatCurrency(activeOrder.order.TaxAmount)}</span>
                 </div>
                 <div className="receipt-summary-row total">
                   <span>TOTAL:</span>
-                  <span>Rs. {Number(activeOrder.order.TotalAmount).toFixed(2)}</span>
+                  <span>Rs. {formatCurrency(activeOrder.order.TotalAmount)}</span>
                 </div>
               </div>
 
               <div style={{ fontSize: '11px', borderTop: '1px dashed #000', paddingTop: '6px' }}>
                 <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>Payments:</div>
-                {activeOrder.payments.map((p, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px' }}>
-                    <span>- {p.Method} {p.ReferenceNumber ? `(${p.ReferenceNumber})` : ''}</span>
-                    <span>Rs. {Number(p.Amount).toFixed(2)}</span>
-                  </div>
-                ))}
+                {activeOrder.payments.map((p, i) => {
+                  const isCash = p.Method === 'Cash';
+                  let recv = null;
+                  let change = null;
+                  if (isCash && p.ReferenceNumber && p.ReferenceNumber.startsWith('Recv:')) {
+                    const parts = p.ReferenceNumber.split(',');
+                    parts.forEach(part => {
+                      if (part.startsWith('Recv:')) recv = parseFloat(part.replace('Recv:', ''));
+                      if (part.startsWith('Change:')) change = parseFloat(part.replace('Change:', ''));
+                    });
+                  }
+                  
+                  return (
+                    <div key={i} style={{ marginBottom: '6px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px' }}>
+                        <span>- {p.Method} {(!isCash && p.ReferenceNumber) ? `(${p.ReferenceNumber})` : ''}</span>
+                        <span>Rs. {formatCurrency(p.Amount)}</span>
+                      </div>
+                      {recv !== null && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '10px', color: '#475569', fontSize: '10px', marginTop: '2px' }}>
+                          <span>Amount Received:</span>
+                          <span>Rs. {formatCurrency(recv)}</span>
+                        </div>
+                      )}
+                      {change !== null && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: '10px', color: '#475569', fontSize: '10px', marginTop: '2px' }}>
+                          <span>Change Balance:</span>
+                          <span>Rs. {formatCurrency(change)}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="receipt-footer">
-                <p>Status: {activeOrder.order.Status}</p>
+                <p>Thank you for shopping with us!</p>
+                <div style={{ marginTop: '8px' }}>
+                  <strong>Exchange Policy</strong>
+                  <p style={{ marginTop: '2px', fontSize: '9.5px', lineHeight: '1.3' }}>A one-time exchange is allowed within two days of purchase, provided the original bill is available.</p>
+                  <p style={{ marginTop: '2px', fontSize: '9.5px', lineHeight: '1.3' }}>No cash refunds will be issued under any circumstances.</p>
+                </div>
+                <p style={{ marginTop: '8px' }}>Status: {activeOrder.order.Status}</p>
                 {activeOrder.order.ParentOrderID && <p>Orig Invoice: #SM-{activeOrder.order.ParentOrderID}</p>}
+                <p style={{ marginTop: '4px', fontSize: '9px', opacity: 0.8 }}>System powered by SellMax Pro POS</p>
               </div>
             </div>
 

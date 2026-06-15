@@ -1,6 +1,7 @@
 const salesRepository = require('../repositories/salesRepository');
 const productRepository = require('../repositories/productRepository');
 const customerRepository = require('../repositories/customerRepository');
+const authService = require('./authService');
 
 class SalesService {
   async getSalesHistory(companyId, filters) {
@@ -32,10 +33,46 @@ class SalesService {
         throw new Error(`Insufficient stock for '${product.Name}'. Available: ${product.Stock}, Requested: ${item.quantity}`);
       }
       
-      // Attach price/cost to verify details are robust (prevent UI tampering)
-      item.price = product.Price;
+      // Store original price
+      item.originalPrice = product.Price;
       item.cost = product.Cost;
-      item.subtotal = Number((product.Price * item.quantity).toFixed(2));
+
+      // Check if price is overridden
+      let actualPrice = product.Price;
+      let isOverridden = false;
+      let needsManagerPin = false;
+
+      if (item.price !== undefined && Number(item.price) !== Number(product.Price)) {
+        actualPrice = Number(item.price);
+        isOverridden = true;
+
+        if (actualPrice < product.Price) {
+          const discountAmt = product.Price - actualPrice;
+          const discountPct = (discountAmt / product.Price) * 100;
+          
+          // Limits check:
+          // 1. MaxDiscountPct (default 15% if null/0)
+          const maxPct = Number(product.MaxDiscountPct) || 15;
+          if (discountPct > maxPct) {
+            needsManagerPin = true;
+          }
+          // 2. Drops below cost
+          if (actualPrice < product.Cost) {
+            needsManagerPin = true;
+          }
+          // 3. Violates MinProfitMargin
+          const margin = actualPrice > 0 ? ((actualPrice - product.Cost) / actualPrice) * 100 : -100;
+          const minMargin = Number(product.MinProfitMargin) || 0;
+          if (margin < minMargin) {
+            needsManagerPin = true;
+          }
+        }
+      }
+
+      item.price = actualPrice;
+      item.isOverridden = isOverridden;
+      item.needsManagerPin = needsManagerPin;
+      item.subtotal = Number((actualPrice * item.quantity).toFixed(2));
 
       // Retrieve discount and profit constraints
       item.minDiscountAmt = Number(product.MinDiscountAmt) || 0;
@@ -45,12 +82,33 @@ class SalesService {
       item.minProfitMargin = Number(product.MinProfitMargin) || 0;
     }
 
+    // Check manager PIN if needed
+    let pinApprovedManagerId = null;
+    const itemsRequiringPin = saleData.items.filter(item => item.needsManagerPin);
+    if (itemsRequiringPin.length > 0) {
+      if (!saleData.managerPin) {
+        throw new Error('Manager approval PIN is required for one or more price overrides.');
+      }
+      const verifyResult = await authService.verifyManagerPin(saleData.managerPin);
+      if (!verifyResult.success) {
+        throw new Error('Invalid manager PIN for price override.');
+      }
+      pinApprovedManagerId = verifyResult.user.userId;
+    }
+
+    // Assign manager approver ID to items that needed it
+    for (const item of saleData.items) {
+      item.approvedByUserId = item.needsManagerPin ? pinApprovedManagerId : null;
+    }
+
     const subtotal = saleData.items.reduce((sum, item) => sum + item.subtotal, 0);
     const discountAmount = saleData.discountAmount || 0;
 
     // Enforce discount limits and minimum profit margin rules
     if (discountAmount > 0 && subtotal > 0) {
       for (const item of saleData.items) {
+        if (item.isOverridden) continue; // Bypass standard constraint checks for price-overridden items
+
         const itemDiscount = discountAmount * (item.subtotal / subtotal);
         const unitDiscount = itemDiscount / item.quantity;
         const discountPct = (unitDiscount / item.price) * 100;
@@ -88,6 +146,8 @@ class SalesService {
       }
     } else if (discountAmount === 0) {
       for (const item of saleData.items) {
+        if (item.isOverridden) continue; // Bypass standard constraint checks for price-overridden items
+
         if (item.minDiscountAmt > 0 || item.minDiscountPct > 0) {
           throw new Error(`Product '${item.name}' requires a mandatory minimum discount, but none was applied.`);
         }
@@ -97,17 +157,35 @@ class SalesService {
         }
       }
     }
-    const taxAmount = Number(((subtotal - discountAmount) * 0.10).toFixed(2)); // Assuming fixed 10% tax for simplicity, or using client tax amount
-    const totalAmount = Number((subtotal - discountAmount + taxAmount).toFixed(2));
+    // Use the tax amount provided by the client (which uses the company's tax config)
+    // Fall back to 10% only if the client didn't send taxAmount
+    const taxAmount = saleData.taxAmount !== undefined 
+      ? Number(Number(saleData.taxAmount).toFixed(2))
+      : Number(((subtotal - discountAmount) * 0.10).toFixed(2));
+    const serverTotalAmount = Number((subtotal - discountAmount + taxAmount).toFixed(2));
 
+    // The client's totalAmount is what the user agreed to pay.
+    // Accept the client's total if it's within Rs. 1.00 of the server-recalculated total
+    // (handles floating-point precision differences and mid-session price display).
+    // The payment sum is always validated against the CLIENT's totalAmount.
+    const clientTotalAmount = saleData.totalAmount !== undefined
+      ? Number(Number(saleData.totalAmount).toFixed(2))
+      : serverTotalAmount;
+
+    if (Math.abs(clientTotalAmount - serverTotalAmount) > 1.00) {
+      throw new Error(`Order total mismatch detected. Client total: Rs. ${clientTotalAmount.toFixed(2)}, Server total: Rs. ${serverTotalAmount.toFixed(2)}. Please refresh and retry.`);
+    }
+
+    // Use server-recalculated values for the actual stored record
+    const totalAmount = serverTotalAmount;
     saleData.subtotal = subtotal;
     saleData.totalAmount = totalAmount;
     saleData.taxAmount = taxAmount;
 
-    // 3. Validation: Verify Split Payment Sum
+    // 3. Validation: Verify Split Payment Sum matches what the CLIENT presented
     const paymentsSum = saleData.payments.reduce((sum, pay) => sum + pay.amount, 0);
-    if (Math.abs(paymentsSum - totalAmount) > 0.01) {
-      throw new Error(`Payment mismatch. Total due: $${totalAmount}, Paid: $${paymentsSum.toFixed(2)}`);
+    if (Math.abs(paymentsSum - clientTotalAmount) > 0.01) {
+      throw new Error(`Payment mismatch. Total due: Rs. ${clientTotalAmount.toFixed(2)}, Paid: Rs. ${paymentsSum.toFixed(2)}`);
     }
 
     // 4. Validation: Verify Customer Credit Limits
@@ -128,7 +206,7 @@ class SalesService {
       }
       const potentialBalance = customer.CurrentBalance + creditAmount;
       if (potentialBalance > customer.CreditLimit) {
-        throw new Error(`Credit limit exceeded. Customer Limit: $${customer.CreditLimit.toFixed(2)}, Current Balance: $${customer.CurrentBalance.toFixed(2)}, Requested Credit: $${creditAmount.toFixed(2)}`);
+        throw new Error(`Credit limit exceeded. Customer Limit: Rs. ${customer.CreditLimit.toFixed(2)}, Current Balance: Rs. ${customer.CurrentBalance.toFixed(2)}, Requested Credit: Rs. ${creditAmount.toFixed(2)}`);
       }
     }
 
@@ -148,6 +226,17 @@ class SalesService {
 
   async resumeHeldSale(orderId, companyId) {
     return await salesRepository.resumeHeldSale(orderId, companyId);
+  }
+
+  async cancelHeldSale(orderId, companyId) {
+    if (!orderId) {
+      throw new Error('Order ID is required to cancel a held sale.');
+    }
+    const success = await salesRepository.deleteHeldSale(orderId, companyId);
+    if (!success) {
+      throw new Error('Held sale not found or already cancelled.');
+    }
+    return true;
   }
 
   async processReturn(returnRequest, companyId, userId) {
@@ -191,7 +280,7 @@ class SalesService {
     // Validate refund payments match total refund due
     const refundPaymentsSum = returnRequest.payments.reduce((sum, p) => sum + p.amount, 0);
     if (Math.abs(refundPaymentsSum - totalAmount) > 0.01) {
-      throw new Error(`Refund payments mismatch. Refund due: $${totalAmount.toFixed(2)}, Refund processed: $${refundPaymentsSum.toFixed(2)}`);
+      throw new Error(`Refund payments mismatch. Refund due: Rs. ${totalAmount.toFixed(2)}, Refund processed: Rs. ${refundPaymentsSum.toFixed(2)}`);
     }
 
     // Validate credit refund: cannot refund more credit than outstanding debt
@@ -205,7 +294,7 @@ class SalesService {
     if (creditRefundAmount > 0 && originalDetails.order.CustomerID) {
       const customer = await customerRepository.getById(originalDetails.order.CustomerID, companyId);
       if (customer && customer.CurrentBalance < creditRefundAmount) {
-        throw new Error(`Cannot refund $${creditRefundAmount.toFixed(2)} to credit balance. Customer outstanding balance is only $${customer.CurrentBalance.toFixed(2)}`);
+        throw new Error(`Cannot refund Rs. ${creditRefundAmount.toFixed(2)} to credit balance. Customer outstanding balance is only Rs. ${customer.CurrentBalance.toFixed(2)}`);
       }
     }
 

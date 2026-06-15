@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
+// import formatCurrency removed – using named import
 import { useAuth } from './contexts/AuthContext';
 import { 
   Building2, ShoppingBag, Coins, FileText, Plus, Search, Edit2, Trash2, 
   RefreshCw, CheckCircle, Printer, Download, X, Calendar, AlertTriangle, Eye, ShieldAlert,
   User, MapPin, CreditCard, Globe, Receipt, Truck
 } from 'lucide-react';
-
+import { formatCurrency } from './utils/formatCurrency';
 export default function Suppliers({ setToast }) {
   const { token, API_URL, hasPermission, user } = useAuth();
   
@@ -333,9 +334,9 @@ export default function Suppliers({ setToast }) {
         status: supplier.Status || 'Active',
         notes: supplier.Notes || '',
         branchName: supplier.BranchName || '',
-        creditLimit: Number(supplier.CreditLimit).toFixed(2),
+        creditLimit: formatCurrency(supplier.CreditLimit),
         creditPeriodDays: String(supplier.CreditPeriodDays),
-        openingBalance: Number(supplier.OpeningBalance).toFixed(2),
+        openingBalance: formatCurrency(supplier.OpeningBalance),
         paymentTerms: supplier.PaymentTerms || 'Net 30',
         bankName: supplier.BankName || '',
         accountName: supplier.AccountName || '',
@@ -518,9 +519,9 @@ export default function Suppliers({ setToast }) {
               productId: item.ProductID,
               searchQuery: `${item.ProductName} (${item.Barcode || item.SKU || ''})`,
               quantity: String(item.Quantity),
-              unitCost: Number(item.UnitCost).toFixed(2),
-              discount: Number(item.Discount || 0).toFixed(2),
-              tax: Number(item.Tax || 0).toFixed(2)
+              unitCost: formatCurrency(item.UnitCost),
+              discount: formatCurrency(item.Discount || 0),
+              tax: formatCurrency(item.Tax || 0)
             };
           })
         });
@@ -569,7 +570,7 @@ export default function Suppliers({ setToast }) {
     if (field === 'productId') {
       const prod = products.find(p => p.ProductID === parseInt(value, 10));
       if (prod) {
-        newItems[index].unitCost = Number(prod.Cost).toFixed(2);
+        newItems[index].unitCost = formatCurrency(prod.Cost);
       }
     }
     setPoForm(prev => ({ ...prev, items: newItems }));
@@ -615,7 +616,7 @@ export default function Suppliers({ setToast }) {
           setToast({ type: 'success', message: `Merged: ${exactMatch.Name} quantity updated.` });
         } else {
           newItems[index].productId = exactMatch.ProductID;
-          newItems[index].unitCost = Number(exactMatch.Cost).toFixed(2);
+          newItems[index].unitCost = formatCurrency(exactMatch.Cost);
           newItems[index].searchQuery = `${exactMatch.Name} (${exactMatch.Barcode || exactMatch.SKU})`;
           setToast({ type: 'success', message: `Selected: ${exactMatch.Name}` });
         }
@@ -656,7 +657,7 @@ export default function Suppliers({ setToast }) {
           setToast({ type: 'success', message: `Merged: ${match.Name} quantity updated.` });
         } else {
           newItems[index].productId = match.ProductID;
-          newItems[index].unitCost = Number(match.Cost).toFixed(2);
+          newItems[index].unitCost = formatCurrency(match.Cost);
           newItems[index].searchQuery = `${match.Name} (${match.Barcode || match.SKU})`;
           setPoForm(prev => ({ ...prev, items: newItems }));
           setToast({ type: 'success', message: `Selected: ${match.Name}` });
@@ -1145,7 +1146,7 @@ export default function Suppliers({ setToast }) {
     if (field === 'productId') {
       const prod = products.find(p => p.ProductID === parseInt(value, 10));
       if (prod) {
-        newItems[index].unitCost = Number(prod.Cost).toFixed(2);
+        newItems[index].unitCost = formatCurrency(prod.Cost);
       }
     }
     setReturnForm(prev => ({ ...prev, items: newItems }));
@@ -1200,7 +1201,7 @@ export default function Suppliers({ setToast }) {
           items: fullRet.items.map(item => ({
             productId: item.ProductID,
             quantity: String(item.Quantity),
-            unitCost: Number(item.UnitCost).toFixed(2),
+            unitCost: formatCurrency(item.UnitCost),
             batchNo: item.BatchNo || ''
           }))
         });
@@ -1313,7 +1314,7 @@ export default function Suppliers({ setToast }) {
     if (field === 'productId') {
       const prod = products.find(p => p.ProductID === parseInt(value, 10));
       if (prod) {
-        newItems[index].unitCost = Number(prod.Cost).toFixed(2);
+        newItems[index].unitCost = formatCurrency(prod.Cost);
       }
     }
     setDirectPurchaseForm(prev => ({ ...prev, items: newItems }));
@@ -1354,7 +1355,7 @@ export default function Suppliers({ setToast }) {
           setToast({ type: 'success', message: `Merged: ${exactMatch.Name} quantity updated.` });
         } else {
           newItems[index].productId = exactMatch.ProductID;
-          newItems[index].unitCost = Number(exactMatch.Cost).toFixed(2);
+          newItems[index].unitCost = formatCurrency(exactMatch.Cost);
           newItems[index].searchQuery = `${exactMatch.Name} (${exactMatch.Barcode || exactMatch.SKU})`;
           setToast({ type: 'success', message: `Selected: ${exactMatch.Name}` });
         }
@@ -1392,7 +1393,7 @@ export default function Suppliers({ setToast }) {
           setToast({ type: 'success', message: `Merged: ${match.Name} quantity updated.` });
         } else {
           newItems[index].productId = match.ProductID;
-          newItems[index].unitCost = Number(match.Cost).toFixed(2);
+          newItems[index].unitCost = formatCurrency(match.Cost);
           newItems[index].searchQuery = `${match.Name} (${match.Barcode || match.SKU})`;
           setDirectPurchaseForm(prev => ({ ...prev, items: newItems }));
           setToast({ type: 'success', message: `Selected: ${match.Name}` });
@@ -1531,7 +1532,7 @@ export default function Suppliers({ setToast }) {
     if (field === 'productId') {
       const prod = products.find(p => p.ProductID === parseInt(value, 10));
       if (prod) {
-        newItems[index].unitCost = Number(prod.Cost).toFixed(2);
+        newItems[index].unitCost = formatCurrency(prod.Cost);
       }
     }
     setDirectCreditPurchaseForm(prev => ({ ...prev, items: newItems }));
@@ -1572,7 +1573,7 @@ export default function Suppliers({ setToast }) {
           setToast({ type: 'success', message: `Merged: ${exactMatch.Name} quantity updated.` });
         } else {
           newItems[index].productId = exactMatch.ProductID;
-          newItems[index].unitCost = Number(exactMatch.Cost).toFixed(2);
+          newItems[index].unitCost = formatCurrency(exactMatch.Cost);
           newItems[index].searchQuery = `${exactMatch.Name} (${exactMatch.Barcode || exactMatch.SKU})`;
           setToast({ type: 'success', message: `Selected: ${exactMatch.Name}` });
         }
@@ -1610,7 +1611,7 @@ export default function Suppliers({ setToast }) {
           setToast({ type: 'success', message: `Merged: ${match.Name} quantity updated.` });
         } else {
           newItems[index].productId = match.ProductID;
-          newItems[index].unitCost = Number(match.Cost).toFixed(2);
+          newItems[index].unitCost = formatCurrency(match.Cost);
           newItems[index].searchQuery = `${match.Name} (${match.Barcode || match.SKU})`;
           setDirectCreditPurchaseForm(prev => ({ ...prev, items: newItems }));
           setToast({ type: 'success', message: `Selected: ${match.Name}` });
@@ -1945,13 +1946,13 @@ export default function Suppliers({ setToast }) {
           </tr>
           <tr>
             <td colspan="3"><strong>Name:</strong> ${supplier.SupplierName}<br/><strong>Code:</strong> ${supplier.SupplierCode}<br/><strong>Email:</strong> ${supplier.EmailAddress || '--'}<br/><strong>Mobile:</strong> ${supplier.MobileNumber || '--'}</td>
-            <td colspan="3"><strong>Credit Limit:</strong> Rs. ${Number(supplier.CreditLimit).toFixed(2)}<br/><strong>Credit Period:</strong> ${supplier.CreditPeriodDays || 0} Days<br/><strong>Payment Terms:</strong> ${supplier.PaymentTerms || '--'}</td>
+            <td colspan="3"><strong>Credit Limit:</strong> Rs. ${formatCurrency(supplier.CreditLimit)}<br/><strong>Credit Period:</strong> ${supplier.CreditPeriodDays || 0} Days<br/><strong>Payment Terms:</strong> ${supplier.PaymentTerms || '--'}</td>
           </tr>
           <tr><td colspan="6"></td></tr>
           <tr class="summary-card">
-            <td colspan="2" align="center">Opening Balance: Rs. ${Number(reportOpeningBalance).toFixed(2)}</td>
-            <td colspan="2" align="center">Closing Balance: Rs. ${Number(reportClosingBalance).toFixed(2)}</td>
-            <td colspan="2" align="center">Owed / Payable: Rs. ${Number(supplier.CurrentBalance).toFixed(2)}</td>
+            <td colspan="2" align="center">Opening Balance: Rs. ${formatCurrency(reportOpeningBalance)}</td>
+            <td colspan="2" align="center">Closing Balance: Rs. ${formatCurrency(reportClosingBalance)}</td>
+            <td colspan="2" align="center">Owed / Payable: Rs. ${formatCurrency(supplier.CurrentBalance)}</td>
           </tr>
           <tr><td colspan="6"></td></tr>
         </table>
@@ -1970,13 +1971,13 @@ export default function Suppliers({ setToast }) {
           <tbody>
             <tr>
               <td colspan="5"><strong>Period Opening Balance</strong></td>
-              <td class="number"><strong>Rs. ${Number(reportOpeningBalance).toFixed(2)}</strong></td>
+              <td class="number"><strong>Rs. ${formatCurrency(reportOpeningBalance)}</strong></td>
             </tr>
             ${reportResult.map(t => {
               const { refNo } = getLedgerRowDetails(t);
-              const deb = t.TransactionType === 'Debit' ? Number(t.Amount).toFixed(2) : '--';
-              const cred = t.TransactionType === 'Credit' ? Number(t.Amount).toFixed(2) : '--';
-              const bal = Number(t.RunningBalance).toFixed(2);
+              const deb = t.TransactionType === 'Debit' ? formatCurrency(t.Amount) : '--';
+              const cred = t.TransactionType === 'Credit' ? formatCurrency(t.Amount) : '--';
+              const bal = formatCurrency(t.RunningBalance);
               return `
                 <tr>
                   <td>${new Date(t.TransactionDate).toLocaleDateString()}</td>
@@ -1990,7 +1991,7 @@ export default function Suppliers({ setToast }) {
             }).join('')}
             <tr>
               <td colspan="5"><strong>Period Closing Balance</strong></td>
-              <td class="number"><strong>Rs. ${Number(reportClosingBalance).toFixed(2)}</strong></td>
+              <td class="number"><strong>Rs. ${formatCurrency(reportClosingBalance)}</strong></td>
             </tr>
           </tbody>
         </table>
@@ -2000,27 +2001,27 @@ export default function Suppliers({ setToast }) {
           <tr>
             <td colspan="4"></td>
             <td class="label">Total Purchases (+):</td>
-            <td class="number">Rs. ${totalPurchases.toFixed(2)}</td>
+            <td class="number">Rs. ${formatCurrency(totalPurchases)}</td>
           </tr>
           <tr>
             <td colspan="4"></td>
             <td class="label">Total Payments (-):</td>
-            <td class="number">Rs. ${totalPayments.toFixed(2)}</td>
+            <td class="number">Rs. ${formatCurrency(totalPayments)}</td>
           </tr>
           <tr>
             <td colspan="4"></td>
             <td class="label">Total Returns (-):</td>
-            <td class="number">Rs. ${totalReturns.toFixed(2)}</td>
+            <td class="number">Rs. ${formatCurrency(totalReturns)}</td>
           </tr>
           <tr>
             <td colspan="4"></td>
             <td class="summary-card">Closing Balance:</td>
-            <td class="summary-card number">Rs. ${reportClosingBalance.toFixed(2)}</td>
+            <td class="summary-card number">Rs. ${formatCurrency(reportClosingBalance)}</td>
           </tr>
           <tr>
             <td colspan="4"></td>
             <td class="summary-card" style="color:red;">Outstanding Balance:</td>
-            <td class="summary-card number" style="color:red;">Rs. ${Number(supplier.CurrentBalance).toFixed(2)}</td>
+            <td class="summary-card number" style="color:red;">Rs. ${formatCurrency(supplier.CurrentBalance)}</td>
           </tr>
         </table>
       </body>
@@ -2173,8 +2174,8 @@ export default function Suppliers({ setToast }) {
           SupplierName: r.SupplierName,
           EmailAddress: r.EmailAddress || '--',
           MobileNumber: r.MobileNumber || '--',
-          CreditLimit: `Rs. ${Number(r.CreditLimit).toFixed(2)}`,
-          CurrentBalance: `Rs. ${Number(r.CurrentBalance).toFixed(2)}`,
+          CreditLimit: `Rs. ${formatCurrency(r.CreditLimit)}`,
+          CurrentBalance: `Rs. ${formatCurrency(r.CurrentBalance)}`,
           SupplierCategory: r.SupplierCategory || '--'
         }))
       });
@@ -2203,8 +2204,8 @@ export default function Suppliers({ setToast }) {
           SupplierName: r.SupplierName,
           EmailAddress: r.EmailAddress || '--',
           MobileNumber: r.MobileNumber || '--',
-          CreditLimit: `Rs. ${Number(r.CreditLimit).toFixed(2)}`,
-          CurrentBalance: `Rs. ${Number(r.CurrentBalance).toFixed(2)}`,
+          CreditLimit: `Rs. ${formatCurrency(r.CreditLimit)}`,
+          CurrentBalance: `Rs. ${formatCurrency(r.CurrentBalance)}`,
           SupplierCategory: r.SupplierCategory || '--'
         }))
       });
@@ -2234,7 +2235,7 @@ export default function Suppliers({ setToast }) {
           PONumber: r.PONumber,
           SupplierName: r.SupplierName,
           OrderDate: new Date(r.OrderDate).toLocaleDateString(),
-          TotalAmount: `Rs. ${Number(r.TotalAmount).toFixed(2)}`,
+          TotalAmount: `Rs. ${formatCurrency(r.TotalAmount)}`,
           Status: r.Status,
           InvoiceNumber: r.InvoiceNumber || '--',
           PaymentStatus: r.PaymentStatus || '--'
@@ -2397,9 +2398,9 @@ export default function Suppliers({ setToast }) {
                             </span>
                           </td>
                           <td className="mono" style={{ color: parseFloat(s.CurrentBalance) > 0 ? 'var(--warning)' : 'var(--text-secondary)' }}>
-                            Rs. {Number(s.CurrentBalance).toFixed(2)}
+                            Rs. {formatCurrency(s.CurrentBalance)}
                           </td>
-                          <td className="mono">Rs. {Number(s.CreditLimit).toFixed(2)}</td>
+                          <td className="mono">Rs. {formatCurrency(s.CreditLimit)}</td>
                           <td>{s.BranchName || 'Global'}</td>
                           <td>
                             <button
@@ -2513,7 +2514,7 @@ export default function Suppliers({ setToast }) {
                             <td className="mono" style={{ fontWeight: '700' }}>{po.PONumber}</td>
                             <td style={{ fontWeight: '600' }}>{po.SupplierName}</td>
                             <td>{new Date(po.OrderDate).toLocaleDateString()}</td>
-                            <td className="mono" style={{ fontWeight: '700', color: 'var(--accent)' }}>Rs. {Number(po.TotalAmount).toFixed(2)}</td>
+                            <td className="mono" style={{ fontWeight: '700', color: 'var(--accent)' }}>Rs. {formatCurrency(po.TotalAmount)}</td>
                             <td>
                               <span style={{ 
                                 fontSize: '11px', fontWeight: '700', padding: '3px 10px', borderRadius: '12px',
@@ -2742,7 +2743,7 @@ export default function Suppliers({ setToast }) {
                             <td className="mono" style={{ fontWeight: '700' }}>{ret.ReturnNumber}</td>
                             <td style={{ fontWeight: '600' }}>{ret.SupplierName}</td>
                             <td>{new Date(ret.ReturnDate).toLocaleDateString()}</td>
-                            <td className="mono" style={{ fontWeight: '700', color: 'var(--danger)' }}>Rs. {Number(ret.TotalAmount).toFixed(2)}</td>
+                            <td className="mono" style={{ fontWeight: '700', color: 'var(--danger)' }}>Rs. {formatCurrency(ret.TotalAmount)}</td>
                             <td>
                               <span style={{
                                 padding: '3px 8px',
@@ -2854,25 +2855,25 @@ export default function Suppliers({ setToast }) {
                 <div className="glass-panel" style={{ padding: '20px' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Outstanding Balance Owed</div>
                   <div style={{ fontSize: '24px', fontWeight: '800', color: ledgerSummary.balance > 0 ? 'var(--warning)' : 'var(--text-primary)', marginTop: '4px' }}>
-                    Rs. {Number(ledgerSummary.balance).toFixed(2)}
+                    Rs. {formatCurrency(ledgerSummary.balance)}
                   </div>
                 </div>
                 <div className="glass-panel" style={{ padding: '20px' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Assigned Credit Limit</div>
                   <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--accent)', marginTop: '4px' }}>
-                    Rs. {Number(ledgerSummary.creditLimit).toFixed(2)}
+                    Rs. {formatCurrency(ledgerSummary.creditLimit)}
                   </div>
                 </div>
                 <div className="glass-panel" style={{ padding: '20px' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Period Opening Balance</div>
                   <div style={{ fontSize: '24px', fontWeight: '800', color: ledgerOpeningBalance > 0 ? 'var(--warning)' : 'var(--text-primary)', marginTop: '4px' }}>
-                    Rs. {Number(ledgerOpeningBalance).toFixed(2)}
+                    Rs. {formatCurrency(ledgerOpeningBalance)}
                   </div>
                 </div>
                 <div className="glass-panel" style={{ padding: '20px' }}>
                   <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>Period Closing Balance</div>
                   <div style={{ fontSize: '24px', fontWeight: '800', color: ledgerClosingBalance > 0 ? 'var(--warning)' : 'var(--text-primary)', marginTop: '4px' }}>
-                    Rs. {Number(ledgerClosingBalance).toFixed(2)}
+                    Rs. {formatCurrency(ledgerClosingBalance)}
                   </div>
                 </div>
               </div>
@@ -2906,12 +2907,12 @@ export default function Suppliers({ setToast }) {
                               <td className="mono">{invoiceNo}</td>
                               <td style={{ fontWeight: '600' }}>{tx.ReferenceType}</td>
                               <td className="mono" style={{ textAlign: 'right', color: tx.TransactionType === 'Debit' ? 'var(--success)' : 'inherit' }}>
-                                {tx.TransactionType === 'Debit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
+                                {tx.TransactionType === 'Debit' ? `Rs. ${formatCurrency(tx.Amount)}` : '--'}
                               </td>
                               <td className="mono" style={{ textAlign: 'right', color: tx.TransactionType === 'Credit' ? 'var(--warning)' : 'inherit' }}>
-                                {tx.TransactionType === 'Credit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
+                                {tx.TransactionType === 'Credit' ? `Rs. ${formatCurrency(tx.Amount)}` : '--'}
                               </td>
-                              <td className="mono" style={{ textAlign: 'right', fontWeight: '700' }}>Rs. {Number(tx.RunningBalance).toFixed(2)}</td>
+                              <td className="mono" style={{ textAlign: 'right', fontWeight: '700' }}>Rs. {formatCurrency(tx.RunningBalance)}</td>
                             </tr>
                           );
                         })
@@ -3097,10 +3098,10 @@ export default function Suppliers({ setToast }) {
                   <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', background: 'rgba(255, 255, 255, 0.02)' }}>
                     <h4 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: '700', color: 'var(--text-primary)', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>Account & Payment Terms</h4>
                     <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      <strong>Credit Limit:</strong> <span className="mono">Rs. {Number(suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.CreditLimit || 0).toFixed(2)}</span>
+                      <strong>Credit Limit:</strong> <span className="mono">Rs. {formatCurrency(suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.CreditLimit || 0)}</span>
                       <strong>Credit Period:</strong> <span>{suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.CreditPeriodDays || 0} Days</span>
                       <strong>Payment Terms:</strong> <span>{suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.PaymentTerms || '--'}</span>
-                      <strong>Real-time Balance:</strong> <span className="mono" style={{ color: parseFloat(suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.CurrentBalance) > 0 ? 'var(--warning)' : 'var(--text-primary)', fontWeight: '700' }}>Rs. {Number(suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.CurrentBalance || 0).toFixed(2)}</span>
+                      <strong>Real-time Balance:</strong> <span className="mono" style={{ color: parseFloat(suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.CurrentBalance) > 0 ? 'var(--warning)' : 'var(--text-primary)', fontWeight: '700' }}>Rs. {formatCurrency(suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.CurrentBalance || 0)}</span>
                     </div>
                   </div>
                 </div>
@@ -3124,23 +3125,23 @@ export default function Suppliers({ setToast }) {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
                       <div className="glass-panel" style={{ padding: '14px', textAlign: 'center', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)' }}>
                         <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '4px' }}>Opening Balance</div>
-                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>Rs. {Number(reportOpeningBalance).toFixed(2)}</div>
+                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: 'var(--text-primary)' }}>Rs. {formatCurrency(reportOpeningBalance)}</div>
                       </div>
                       <div className="glass-panel" style={{ padding: '14px', textAlign: 'center', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)' }}>
                         <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '4px' }}>Total Purchases (+)</div>
-                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: 'var(--warning)' }}>Rs. {totalPurchases.toFixed(2)}</div>
+                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: 'var(--warning)' }}>Rs. {formatCurrency(totalPurchases)}</div>
                       </div>
                       <div className="glass-panel" style={{ padding: '14px', textAlign: 'center', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)' }}>
                         <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '4px' }}>Total Payments (-)</div>
-                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: 'var(--success)' }}>Rs. {totalPayments.toFixed(2)}</div>
+                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: 'var(--success)' }}>Rs. {formatCurrency(totalPayments)}</div>
                       </div>
                       <div className="glass-panel" style={{ padding: '14px', textAlign: 'center', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)' }}>
                         <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '4px' }}>Total Returns (-)</div>
-                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: 'var(--danger)' }}>Rs. {totalReturns.toFixed(2)}</div>
+                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: 'var(--danger)' }}>Rs. {formatCurrency(totalReturns)}</div>
                       </div>
                       <div className="glass-panel" style={{ padding: '14px', textAlign: 'center', background: 'rgba(56, 189, 248, 0.06)', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
                         <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#38bdf8', marginBottom: '4px' }}>Closing Balance (=)</div>
-                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: '#38bdf8' }}>Rs. {Number(reportClosingBalance).toFixed(2)}</div>
+                        <div className="mono" style={{ fontSize: '14px', fontWeight: '700', color: '#38bdf8' }}>Rs. {formatCurrency(reportClosingBalance)}</div>
                       </div>
                     </div>
                   );
@@ -3167,7 +3168,7 @@ export default function Suppliers({ setToast }) {
                           <td style={{ color: 'var(--text-primary)' }}>Period Opening Balance</td>
                           <td style={{ textAlign: 'right' }}>--</td>
                           <td style={{ textAlign: 'right' }}>--</td>
-                          <td className="mono" style={{ textAlign: 'right', color: 'var(--text-primary)' }}>Rs. {Number(reportOpeningBalance).toFixed(2)}</td>
+                          <td className="mono" style={{ textAlign: 'right', color: 'var(--text-primary)' }}>Rs. {formatCurrency(reportOpeningBalance)}</td>
                         </tr>
                         {reportResult.map((tx, idx) => {
                           const { refNo } = getLedgerRowDetails(tx);
@@ -3177,12 +3178,12 @@ export default function Suppliers({ setToast }) {
                               <td className="mono">{refNo}</td>
                               <td>{tx.Description || tx.ReferenceType}</td>
                               <td className="mono" style={{ textAlign: 'right', color: tx.TransactionType === 'Debit' ? 'var(--success)' : 'inherit' }}>
-                                {tx.TransactionType === 'Debit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
+                                {tx.TransactionType === 'Debit' ? `Rs. ${formatCurrency(tx.Amount)}` : '--'}
                               </td>
                               <td className="mono" style={{ textAlign: 'right', color: tx.TransactionType === 'Credit' ? 'var(--warning)' : 'inherit' }}>
-                                {tx.TransactionType === 'Credit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
+                                {tx.TransactionType === 'Credit' ? `Rs. ${formatCurrency(tx.Amount)}` : '--'}
                               </td>
-                              <td className="mono" style={{ textAlign: 'right', fontWeight: '600' }}>Rs. {Number(tx.RunningBalance).toFixed(2)}</td>
+                              <td className="mono" style={{ textAlign: 'right', fontWeight: '600' }}>Rs. {formatCurrency(tx.RunningBalance)}</td>
                             </tr>
                           );
                         })}
@@ -3192,7 +3193,7 @@ export default function Suppliers({ setToast }) {
                           <td style={{ color: '#38bdf8' }}>Period Closing Balance</td>
                           <td style={{ textAlign: 'right' }}>--</td>
                           <td style={{ textAlign: 'right' }}>--</td>
-                          <td className="mono" style={{ textAlign: 'right', color: '#38bdf8' }}>Rs. {Number(reportClosingBalance).toFixed(2)}</td>
+                          <td className="mono" style={{ textAlign: 'right', color: '#38bdf8' }}>Rs. {formatCurrency(reportClosingBalance)}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -3220,28 +3221,28 @@ export default function Suppliers({ setToast }) {
                       <div style={{ width: '300px', display: 'flex', flexDirection: 'column', gap: '8px', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '16px', background: 'rgba(255, 255, 255, 0.01)' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
                           <span>Period Opening Balance:</span>
-                          <span className="mono" style={{ color: 'var(--text-primary)' }}>Rs. {Number(reportOpeningBalance).toFixed(2)}</span>
+                          <span className="mono" style={{ color: 'var(--text-primary)' }}>Rs. {formatCurrency(reportOpeningBalance)}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
                           <span>Total Purchases (+):</span>
-                          <span className="mono" style={{ color: 'var(--warning)' }}>Rs. {totalPurchases.toFixed(2)}</span>
+                          <span className="mono" style={{ color: 'var(--warning)' }}>Rs. {formatCurrency(totalPurchases)}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
                           <span>Total Payments (-):</span>
-                          <span className="mono" style={{ color: 'var(--success)' }}>Rs. {totalPayments.toFixed(2)}</span>
+                          <span className="mono" style={{ color: 'var(--success)' }}>Rs. {formatCurrency(totalPayments)}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
                           <span>Total Returns (-):</span>
-                          <span className="mono" style={{ color: 'var(--danger)' }}>Rs. {totalReturns.toFixed(2)}</span>
+                          <span className="mono" style={{ color: 'var(--danger)' }}>Rs. {formatCurrency(totalReturns)}</span>
                         </div>
                         <hr style={{ border: 0, borderTop: '1px solid var(--border-color)', margin: '4px 0' }} />
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700' }}>
                           <span style={{ color: '#38bdf8' }}>Closing Balance (=):</span>
-                          <span className="mono" style={{ color: '#38bdf8' }}>Rs. {Number(reportClosingBalance).toFixed(2)}</span>
+                          <span className="mono" style={{ color: '#38bdf8' }}>Rs. {formatCurrency(reportClosingBalance)}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: '700' }}>
                           <span style={{ color: 'var(--danger)' }}>Outstanding Payable:</span>
-                          <span className="mono" style={{ color: 'var(--danger)' }}>Rs. {Number(activeSupplier?.CurrentBalance || 0).toFixed(2)}</span>
+                          <span className="mono" style={{ color: 'var(--danger)' }}>Rs. {formatCurrency(activeSupplier?.CurrentBalance || 0)}</span>
                         </div>
                       </div>
                     </div>
@@ -3294,9 +3295,9 @@ export default function Suppliers({ setToast }) {
                             <td style={{ fontWeight: '600' }}>{r.SupplierName}</td>
                             <td>{r.EmailAddress || '--'}</td>
                             <td>{r.MobileNumber || '--'}</td>
-                            <td className="mono">Rs. {Number(r.CreditLimit).toFixed(2)}</td>
+                            <td className="mono">Rs. {formatCurrency(r.CreditLimit)}</td>
                             <td className="mono" style={{ fontWeight: '700', color: parseFloat(r.CurrentBalance) > 0 ? 'var(--warning)' : 'inherit' }}>
-                              Rs. {Number(r.CurrentBalance).toFixed(2)}
+                              Rs. {formatCurrency(r.CurrentBalance)}
                             </td>
                             <td>{r.SupplierCategory}</td>
                           </tr>
@@ -3305,7 +3306,7 @@ export default function Suppliers({ setToast }) {
                         <>
                           <tr style={{ background: 'rgba(255, 255, 255, 0.05)', fontWeight: 'bold' }}>
                             <td colSpan={6}>Opening Balance</td>
-                            <td className="mono" style={{ textAlign: 'right' }}>Rs. {Number(reportOpeningBalance).toFixed(2)}</td>
+                            <td className="mono" style={{ textAlign: 'right' }}>Rs. {formatCurrency(reportOpeningBalance)}</td>
                           </tr>
                           {reportResult.map((r, idx) => {
                             const { refNo, invoiceNo } = getLedgerRowDetails(r);
@@ -3316,18 +3317,18 @@ export default function Suppliers({ setToast }) {
                                 <td className="mono">{invoiceNo}</td>
                                 <td style={{ fontWeight: '600' }}>{r.ReferenceType}</td>
                                 <td className="mono" style={{ textAlign: 'right', color: r.TransactionType === 'Debit' ? 'var(--success)' : 'inherit' }}>
-                                  {r.TransactionType === 'Debit' ? `Rs. ${Number(r.Amount).toFixed(2)}` : '--'}
+                                  {r.TransactionType === 'Debit' ? `Rs. ${formatCurrency(r.Amount)}` : '--'}
                                 </td>
                                 <td className="mono" style={{ textAlign: 'right', color: r.TransactionType === 'Credit' ? 'var(--warning)' : 'inherit' }}>
-                                  {r.TransactionType === 'Credit' ? `Rs. ${Number(r.Amount).toFixed(2)}` : '--'}
+                                  {r.TransactionType === 'Credit' ? `Rs. ${formatCurrency(r.Amount)}` : '--'}
                                 </td>
-                                <td className="mono" style={{ textAlign: 'right', fontWeight: '700' }}>Rs. {Number(r.RunningBalance).toFixed(2)}</td>
+                                <td className="mono" style={{ textAlign: 'right', fontWeight: '700' }}>Rs. {formatCurrency(r.RunningBalance)}</td>
                               </tr>
                             );
                           })}
                           <tr style={{ background: 'rgba(255, 255, 255, 0.05)', fontWeight: 'bold' }}>
                             <td colSpan={6}>Closing Balance</td>
-                            <td className="mono" style={{ textAlign: 'right' }}>Rs. {Number(reportClosingBalance).toFixed(2)}</td>
+                            <td className="mono" style={{ textAlign: 'right' }}>Rs. {formatCurrency(reportClosingBalance)}</td>
                           </tr>
                         </>
                       ) : (
@@ -3336,7 +3337,7 @@ export default function Suppliers({ setToast }) {
                             <td className="mono" style={{ fontWeight: '700' }}>{r.PONumber}</td>
                             <td style={{ fontWeight: '600' }}>{r.SupplierName}</td>
                             <td>{new Date(r.OrderDate).toLocaleDateString()}</td>
-                            <td className="mono">Rs. {Number(r.TotalAmount).toFixed(2)}</td>
+                            <td className="mono">Rs. {formatCurrency(r.TotalAmount)}</td>
                             <td>{r.Status}</td>
                             <td className="mono">{r.InvoiceNumber || '--'}</td>
                             <td>{r.PaymentStatus}</td>
@@ -3389,10 +3390,10 @@ export default function Suppliers({ setToast }) {
                 {selectedPo.items?.map(item => (
                   <tr key={item.PurchaseOrderItemID} style={{ borderBottom: '1px solid #ddd' }}>
                     <td style={{ padding: '5px' }}>{item.ProductName} ({item.SKU})</td>
-                    <td style={{ textAlign: 'center', padding: '5px' }}>Rs. {Number(item.UnitCost).toFixed(2)}</td>
+                    <td style={{ textAlign: 'center', padding: '5px' }}>Rs. {formatCurrency(item.UnitCost)}</td>
                     <td style={{ textAlign: 'center', padding: '5px' }}>{Number(item.Quantity)}</td>
                     <td style={{ textAlign: 'center', padding: '5px' }}>{Number(item.ReceivedQty)}</td>
-                    <td style={{ textAlign: 'right', padding: '5px' }}>Rs. {Number(item.Subtotal).toFixed(2)}</td>
+                    <td style={{ textAlign: 'right', padding: '5px' }}>Rs. {formatCurrency(item.Subtotal)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -3402,16 +3403,16 @@ export default function Suppliers({ setToast }) {
               <div style={{ width: '250px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Subtotal:</span>
-                  <span>Rs. {Number(selectedPo.Subtotal).toFixed(2)}</span>
+                  <span>Rs. {formatCurrency(selectedPo.Subtotal)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Tax/VAT:</span>
-                  <span>Rs. {Number(selectedPo.TaxAmount).toFixed(2)}</span>
+                  <span>Rs. {formatCurrency(selectedPo.TaxAmount)}</span>
                 </div>
                 <hr style={{ borderStyle: 'dashed' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
                   <span>Grand Total:</span>
-                  <span>Rs. {Number(selectedPo.TotalAmount).toFixed(2)}</span>
+                  <span>Rs. {formatCurrency(selectedPo.TotalAmount)}</span>
                 </div>
               </div>
             </div>
@@ -3439,15 +3440,15 @@ export default function Suppliers({ setToast }) {
                 <strong>Branch:</strong> {printLedgerData.branch || 'Global'}
               </div>
               <div style={{ textAlign: 'right' }}>
-                <strong>Current Balance:</strong> Rs. {Number(printLedgerData.currentBalance).toFixed(2)}<br />
-                <strong>Credit Limit:</strong> Rs. {Number(printLedgerData.creditLimit).toFixed(2)}<br />
+                <strong>Current Balance:</strong> Rs. {formatCurrency(printLedgerData.currentBalance)}<br />
+                <strong>Credit Limit:</strong> Rs. {formatCurrency(printLedgerData.creditLimit)}<br />
                 <strong>Statement Date:</strong> {new Date().toLocaleDateString()}
               </div>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', background: '#f5f5f5', padding: '10px', fontWeight: 'bold', border: '1px solid #ddd', marginBottom: '10px', fontSize: '13px' }}>
               <span>Opening Balance:</span>
-              <span>Rs. {Number(printLedgerData.openingBalance).toFixed(2)}</span>
+              <span>Rs. {formatCurrency(printLedgerData.openingBalance)}</span>
             </div>
             
             <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '10px', fontSize: '12px' }}>
@@ -3472,13 +3473,13 @@ export default function Suppliers({ setToast }) {
                       <td style={{ padding: '8px' }} className="mono">{invoiceNo}</td>
                       <td style={{ padding: '8px', fontWeight: '600' }}>{tx.ReferenceType}</td>
                       <td style={{ textAlign: 'right', padding: '8px' }} className="mono">
-                        {tx.TransactionType === 'Debit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
+                        {tx.TransactionType === 'Debit' ? `Rs. ${formatCurrency(tx.Amount)}` : '--'}
                       </td>
                       <td style={{ textAlign: 'right', padding: '8px' }} className="mono">
-                        {tx.TransactionType === 'Credit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
+                        {tx.TransactionType === 'Credit' ? `Rs. ${formatCurrency(tx.Amount)}` : '--'}
                       </td>
                       <td style={{ textAlign: 'right', padding: '8px', fontWeight: '700' }} className="mono">
-                        Rs. {Number(tx.RunningBalance).toFixed(2)}
+                        Rs. {formatCurrency(tx.RunningBalance)}
                       </td>
                     </tr>
                   );
@@ -3490,20 +3491,20 @@ export default function Suppliers({ setToast }) {
               <div style={{ width: '300px', background: '#f5f5f5', padding: '10px', border: '1px solid #ddd' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
                   <span>Opening Balance:</span>
-                  <span>Rs. {Number(printLedgerData.openingBalance).toFixed(2)}</span>
+                  <span>Rs. {formatCurrency(printLedgerData.openingBalance)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'green', margin: '4px 0' }}>
                   <span>Total Debits:</span>
-                  <span>Rs. {Number(printLedgerData.totalDebits).toFixed(2)}</span>
+                  <span>Rs. {formatCurrency(printLedgerData.totalDebits)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#b45309', margin: '4px 0' }}>
                   <span>Total Credits:</span>
-                  <span>Rs. {Number(printLedgerData.totalCredits).toFixed(2)}</span>
+                  <span>Rs. {formatCurrency(printLedgerData.totalCredits)}</span>
                 </div>
                 <hr style={{ margin: '6px 0', borderColor: '#ccc' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '13px' }}>
                   <span>Closing Balance:</span>
-                  <span>Rs. {Number(printLedgerData.closingBalance).toFixed(2)}</span>
+                  <span>Rs. {formatCurrency(printLedgerData.closingBalance)}</span>
                 </div>
               </div>
             </div>
@@ -3556,10 +3557,10 @@ export default function Suppliers({ setToast }) {
               </div>
               <div style={{ border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px', background: '#f8fafc' }}>
                 <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: '700', color: '#1e293b', borderBottom: '1px solid #cbd5e1', paddingBottom: '4px' }}>Account & Payment Terms</h4>
-                <strong>Credit Limit:</strong> Rs. {Number(printStatementData.supplier?.CreditLimit || 0).toFixed(2)}<br />
+                <strong>Credit Limit:</strong> Rs. {formatCurrency(printStatementData.supplier?.CreditLimit || 0)}<br />
                 <strong>Credit Period:</strong> {printStatementData.supplier?.CreditPeriodDays || 0} Days<br />
                 <strong>Payment Terms:</strong> {printStatementData.supplier?.PaymentTerms || '--'}<br />
-                <strong>Real-time Balance Due:</strong> Rs. {Number(printStatementData.supplier?.CurrentBalance || 0).toFixed(2)}
+                <strong>Real-time Balance Due:</strong> Rs. {formatCurrency(printStatementData.supplier?.CurrentBalance || 0)}
               </div>
             </div>
 
@@ -3583,7 +3584,7 @@ export default function Suppliers({ setToast }) {
                   <td style={{ padding: '8px' }}>Period Opening Balance</td>
                   <td style={{ padding: '8px', textAlign: 'right' }}>--</td>
                   <td style={{ padding: '8px', textAlign: 'right' }}>--</td>
-                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700' }}>Rs. {Number(printStatementData.openingBalance || 0).toFixed(2)}</td>
+                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700' }}>Rs. {formatCurrency(printStatementData.openingBalance || 0)}</td>
                 </tr>
 
                 {printStatementData.transactions?.map((tx, idx) => {
@@ -3594,13 +3595,13 @@ export default function Suppliers({ setToast }) {
                       <td style={{ padding: '8px' }} className="mono">{refNo}</td>
                       <td style={{ padding: '8px' }}>{tx.Description || tx.ReferenceType}</td>
                       <td style={{ textAlign: 'right', padding: '8px', color: tx.TransactionType === 'Debit' ? '#16a34a' : 'inherit' }} className="mono">
-                        {tx.TransactionType === 'Debit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
+                        {tx.TransactionType === 'Debit' ? `Rs. ${formatCurrency(tx.Amount)}` : '--'}
                       </td>
                       <td style={{ textAlign: 'right', padding: '8px', color: tx.TransactionType === 'Credit' ? '#ca8a04' : 'inherit' }} className="mono">
-                        {tx.TransactionType === 'Credit' ? `Rs. ${Number(tx.Amount).toFixed(2)}` : '--'}
+                        {tx.TransactionType === 'Credit' ? `Rs. {formatCurrency(tx.Amount)}` : '--'}
                       </td>
                       <td style={{ textAlign: 'right', padding: '8px', fontWeight: '600' }} className="mono">
-                        Rs. {Number(tx.RunningBalance).toFixed(2)}
+                        Rs. {formatCurrency(tx.RunningBalance)}
                       </td>
                     </tr>
                   );
@@ -3613,7 +3614,7 @@ export default function Suppliers({ setToast }) {
                   <td style={{ padding: '8px' }}>Period Closing Balance</td>
                   <td style={{ padding: '8px', textAlign: 'right' }}>--</td>
                   <td style={{ padding: '8px', textAlign: 'right' }}>--</td>
-                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700' }}>Rs. {Number(printStatementData.closingBalance || 0).toFixed(2)}</td>
+                  <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700' }}>Rs. {formatCurrency(printStatementData.closingBalance || 0)}</td>
                 </tr>
               </tbody>
             </table>
@@ -3624,27 +3625,27 @@ export default function Suppliers({ setToast }) {
                 <tbody>
                   <tr style={{ borderBottom: '1px solid #e2e8f0' }}>
                     <td style={{ padding: '8px', fontWeight: '600' }}>Period Opening Balance:</td>
-                    <td style={{ padding: '8px', textAlign: 'right' }}>Rs. {Number(printStatementData.openingBalance || 0).toFixed(2)}</td>
+                    <td style={{ padding: '8px', textAlign: 'right' }}>Rs. {formatCurrency(Number(printStatementData.openingBalance || 0))}</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#1e3a8a' }}>
                     <td style={{ padding: '8px', fontWeight: '600' }}>Total Purchases (+):</td>
-                    <td style={{ padding: '8px', textAlign: 'right' }}>Rs. {Number(printStatementData.totalPurchases || 0).toFixed(2)}</td>
+                    <td style={{ padding: '8px', textAlign: 'right' }}>Rs. {formatCurrency(Number(printStatementData.totalPurchases || 0))}</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid #e2e8f0', color: '#16a34a' }}>
                     <td style={{ padding: '8px', fontWeight: '600' }}>Total Payments (-):</td>
-                    <td style={{ padding: '8px', textAlign: 'right' }}>Rs. {Number(printStatementData.totalPayments || 0).toFixed(2)}</td>
+                    <td style={{ padding: '8px', textAlign: 'right' }}>Rs. {formatCurrency(Number(printStatementData.totalPayments || 0))}</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid #cbd5e1', color: '#dc2626' }}>
                     <td style={{ padding: '8px', fontWeight: '600' }}>Total Returns (-):</td>
-                    <td style={{ padding: '8px', textAlign: 'right' }}>Rs. {Number(printStatementData.totalReturns || 0).toFixed(2)}</td>
+                    <td style={{ padding: '8px', textAlign: 'right' }}>Rs. {formatCurrency(Number(printStatementData.totalReturns || 0))}</td>
                   </tr>
                   <tr style={{ borderBottom: '1px solid #cbd5e1', background: '#f1f5f9' }}>
                     <td style={{ padding: '8px', fontWeight: '700' }}>Closing Balance (=):</td>
-                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700' }}>Rs. {Number(printStatementData.closingBalance || 0).toFixed(2)}</td>
+                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700' }}>Rs. {formatCurrency(Number(printStatementData.closingBalance || 0))}</td>
                   </tr>
                   <tr style={{ background: '#fef2f2', color: '#991b1b' }}>
                     <td style={{ padding: '8px', fontWeight: '700' }}>Outstanding Payable:</td>
-                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700' }}>Rs. {Number(printStatementData.supplier?.CurrentBalance || 0).toFixed(2)}</td>
+                    <td style={{ padding: '8px', textAlign: 'right', fontWeight: '700' }}>Rs. {formatCurrency(Number(printStatementData.supplier?.CurrentBalance || 0))}</td>
                   </tr>
                 </tbody>
               </table>
@@ -4197,7 +4198,7 @@ export default function Suppliers({ setToast }) {
                           <th style={{ width: '100px', padding: '8px 12px', textAlign: 'center', fontSize: '11px' }}>Qty</th>
                           <th style={{ width: '130px', padding: '8px 12px', textAlign: 'right', fontSize: '11px' }}>Cost Price</th>
                           <th style={{ width: '120px', padding: '8px 12px', textAlign: 'right', fontSize: '11px' }}>Discount (Rs.)</th>
-                          <th style={{ width: '120px', padding: '8px 12px', textAlign: 'right', fontSize: '11px' }}>Tax (Rs.)</th>
+                          <th style={{ width: '120px', padding: '8px 12px', textAlign: 'right', fontSize: '11px' }}>VAT (Rs.)</th>
                           <th style={{ width: '140px', padding: '8px 12px', textAlign: 'right', fontSize: '11px' }}>Amount</th>
                           <th style={{ width: '45px', padding: '8px' }}></th>
                         </tr>
@@ -4272,7 +4273,7 @@ export default function Suppliers({ setToast }) {
                                             onMouseDown={() => {
                                               const newItems = [...poForm.items];
                                               newItems[index].productId = p.ProductID;
-                                              newItems[index].unitCost = Number(p.Cost).toFixed(2);
+                                              newItems[index].unitCost = formatCurrency(Number(p.Cost));
                                               newItems[index].searchQuery = `${p.Name} (${p.Barcode || p.SKU})`;
                                               setPoForm(prev => ({ ...prev, items: newItems }));
                                               setToast({ type: 'success', message: `Selected: ${p.Name}` });
@@ -4356,7 +4357,7 @@ export default function Suppliers({ setToast }) {
                                 />
                               </td>
                               <td className="mono" style={{ padding: '6px', textAlign: 'right', fontWeight: '700', fontSize: '13px', color: 'var(--accent)' }}>
-                                Rs. {amount.toFixed(2)}
+                                Rs. {formatCurrency(amount)}
                               </td>
                               <td style={{ padding: '6px', textAlign: 'center' }}>
                                 <button
@@ -4398,20 +4399,20 @@ export default function Suppliers({ setToast }) {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
                       <span>Sub Total:</span>
-                      <span className="mono" style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Rs. {subTotal.toFixed(2)}</span>
+                      <span className="mono" style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Rs. {formatCurrency(subTotal)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
                       <span>Discount:</span>
-                      <span className="mono" style={{ fontWeight: '600', color: 'var(--danger)' }}>- Rs. {totalDiscount.toFixed(2)}</span>
+                      <span className="mono" style={{ fontWeight: '600', color: 'var(--danger)' }}>- Rs. {formatCurrency(totalDiscount)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
                       <span>Tax:</span>
-                      <span className="mono" style={{ fontWeight: '600', color: 'var(--warning)' }}>+ Rs. {totalTax.toFixed(2)}</span>
+                      <span className="mono" style={{ fontWeight: '600', color: 'var(--warning)' }}>+ Rs. {formatCurrency(totalTax)}</span>
                     </div>
                     <hr style={{ border: 'none', borderTop: '1px dashed rgba(255, 255, 255, 0.1)', margin: '4px 0' }} />
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800', fontSize: '15px' }}>
                       <span>Grand Total:</span>
-                      <span className="mono" style={{ color: 'var(--success)' }}>Rs. {grandTotal.toFixed(2)}</span>
+                      <span className="mono" style={{ color: 'var(--success)' }}>Rs. {formatCurrency(grandTotal)}</span>
                     </div>
                   </div>
                 </div>
@@ -4594,10 +4595,10 @@ export default function Suppliers({ setToast }) {
                             <td className="mono" style={{ padding: '8px 12px', fontSize: '11px', color: 'var(--text-secondary)' }}>{item.SKU || item.Barcode || '--'}</td>
                             <td style={{ padding: '8px 12px', textAlign: 'center' }} className="mono">{qty.toFixed(3)}</td>
                             <td style={{ padding: '8px 12px', textAlign: 'center' }} className="mono">{parseFloat(item.ReceivedQty || 0).toFixed(3)}</td>
-                            <td style={{ padding: '8px 12px', textAlign: 'right' }} className="mono">Rs. {cost.toFixed(2)}</td>
-                            <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--danger)' }} className="mono">-Rs. {disc.toFixed(2)}</td>
-                            <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--warning)' }} className="mono">+Rs. {tx.toFixed(2)}</td>
-                            <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--accent)' }} className="mono">Rs. {amt.toFixed(2)}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right' }} className="mono">Rs. {formatCurrency(cost)}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--danger)' }} className="mono">- Rs. {formatCurrency(disc)}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--warning)' }} className="mono">+ Rs. {formatCurrency(tx)}</td>
+                            <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--accent)' }} className="mono">Rs. {formatCurrency(amt)}</td>
                           </tr>
                         );
                       })}
@@ -4623,20 +4624,20 @@ export default function Suppliers({ setToast }) {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
                     <span>Sub Total:</span>
-                    <span className="mono" style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Rs. {subTotal.toFixed(2)}</span>
+                    <span className="mono" style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Rs. {formatCurrency(subTotal)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
                     <span>Discount:</span>
-                    <span className="mono" style={{ fontWeight: '600', color: 'var(--danger)' }}>- Rs. {totalDiscount.toFixed(2)}</span>
+                    <span className="mono" style={{ fontWeight: '600', color: 'var(--danger)' }}>- Rs. {formatCurrency(totalDiscount)}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
                     <span>Tax:</span>
-                    <span className="mono" style={{ fontWeight: '600', color: 'var(--warning)' }}>+ Rs. {totalTax.toFixed(2)}</span>
+                    <span className="mono" style={{ fontWeight: '600', color: 'var(--warning)' }}>+ Rs. {formatCurrency(totalTax)}</span>
                   </div>
                   <hr style={{ border: 'none', borderTop: '1px dashed rgba(255, 255, 255, 0.1)', margin: '4px 0' }} />
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800', fontSize: '15px' }}>
                     <span>Grand Total:</span>
-                    <span className="mono" style={{ color: 'var(--success)' }}>Rs. {grandTotal.toFixed(2)}</span>
+                    <span className="mono" style={{ color: 'var(--success)' }}>Rs. {formatCurrency(grandTotal)}</span>
                   </div>
                 </div>
               </div>
@@ -4810,10 +4811,10 @@ export default function Suppliers({ setToast }) {
                                 />
                               </td>
                               <td style={{ padding: '8px 12px', textAlign: 'right' }} className="mono">
-                                Rs. {Number(item.unitCost).toFixed(2)}
+                                Rs. {formatCurrency(Number(item.unitCost))}
                               </td>
                               <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--accent)' }} className="mono">
-                                Rs. {amount.toFixed(2)}
+                                Rs. {formatCurrency(amount)}
                               </td>
                             </tr>
                           );
@@ -4842,7 +4843,7 @@ export default function Suppliers({ setToast }) {
                     <hr style={{ border: 'none', borderTop: '1px dashed rgba(255, 255, 255, 0.1)', margin: '4px 0' }} />
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800', fontSize: '15px' }}>
                       <span>Total Cost:</span>
-                      <span className="mono" style={{ color: 'var(--success)' }}>Rs. {totalCost.toFixed(2)}</span>
+                      <span className="mono" style={{ color: 'var(--success)' }}>Rs. {formatCurrency(totalCost)}</span>
                     </div>
                   </div>
                 </div>
@@ -5024,16 +5025,16 @@ export default function Suppliers({ setToast }) {
                                 {qty.toFixed(3)}
                               </td>
                               <td style={{ padding: '8px 12px', textAlign: 'right' }} className="mono">
-                                Rs. {cost.toFixed(2)}
+                                Rs. {formatCurrency(cost)}
                               </td>
                               <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--danger)' }} className="mono">
-                                - Rs. {discount.toFixed(2)}
+                                - Rs. {formatCurrency(discount)}
                               </td>
                               <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--warning)' }} className="mono">
-                                + Rs. {tax.toFixed(2)}
+                                + Rs. {formatCurrency(tax)}
                               </td>
                               <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--accent)' }} className="mono">
-                                Rs. {amount.toFixed(2)}
+                                Rs. {formatCurrency(amount)}
                               </td>
                             </tr>
                           );
@@ -5092,29 +5093,29 @@ export default function Suppliers({ setToast }) {
                   <div className="glass-panel" style={{ padding: '14px', background: 'rgba(255, 255, 255, 0.02)', border: '1px solid rgba(255, 255, 255, 0.05)', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
                       <span>Sub Total:</span>
-                      <span className="mono" style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Rs. {subTotal.toFixed(2)}</span>
+                      <span className="mono" style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Rs. {formatCurrency(subTotal)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
                       <span>Discount:</span>
-                      <span className="mono" style={{ fontWeight: '600', color: 'var(--danger)' }}>- Rs. {totalDiscount.toFixed(2)}</span>
+                      <span className="mono" style={{ fontWeight: '600', color: 'var(--danger)' }}>- Rs. {formatCurrency(totalDiscount)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
                       <span>Tax:</span>
-                      <span className="mono" style={{ fontWeight: '600', color: 'var(--warning)' }}>+ Rs. {totalTax.toFixed(2)}</span>
+                      <span className="mono" style={{ fontWeight: '600', color: 'var(--warning)' }}>+ Rs. {formatCurrency(totalTax)}</span>
                     </div>
                     <hr style={{ border: 'none', borderTop: '1px dashed rgba(255, 255, 255, 0.1)', margin: '4px 0' }} />
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '14px' }}>
                       <span>Grand Total:</span>
-                      <span className="mono" style={{ color: 'var(--success)' }}>Rs. {grandTotal.toFixed(2)}</span>
+                      <span className="mono" style={{ color: 'var(--success)' }}>Rs. {formatCurrency(grandTotal)}</span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
                       <span>Paid Amount:</span>
-                      <span className="mono" style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Rs. {paidAmount.toFixed(2)}</span>
+                      <span className="mono" style={{ fontWeight: '600', color: 'var(--text-primary)' }}>Rs. {formatCurrency(paidAmount)}</span>
                     </div>
                     <hr style={{ border: 'none', borderTop: '1px dashed rgba(255, 255, 255, 0.1)', margin: '4px 0' }} />
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '800', fontSize: '15px' }}>
                       <span>Balance Due:</span>
-                      <span className="mono" style={{ color: balanceDue > 0 ? 'var(--warning)' : 'var(--success)' }}>Rs. {balanceDue.toFixed(2)}</span>
+                      <span className="mono" style={{ color: balanceDue > 0 ? 'var(--warning)' : 'var(--success)' }}>Rs. {formatCurrency(balanceDue)}</span>
                     </div>
                   </div>
                 </div>
@@ -5174,7 +5175,7 @@ export default function Suppliers({ setToast }) {
                       onClick={() => {
                         let currentPaid = parseFloat(invoiceForm.amountPaid || 0);
                         if (currentPaid <= 0) {
-                          setInvoiceForm(prev => ({ ...prev, amountPaid: grandTotal.toFixed(2) }));
+                          setInvoiceForm(prev => ({ ...prev, amountPaid: formatCurrency(grandTotal) }));
                           setTimeout(() => {
                             const form = document.querySelector('#bill-form');
                             if (form) form.requestSubmit();
@@ -5270,7 +5271,7 @@ export default function Suppliers({ setToast }) {
                     <div style={{ textAlign:'right' }}>
                       <div style={{ fontSize:'11px', color:'rgba(148,163,184,0.7)', marginBottom:'2px' }}>OUTSTANDING</div>
                       <div style={{ fontSize:'15px', fontWeight:'800', color: outstandingBalance > 0 ? '#ef4444' : '#10b981' }}>
-                        Rs. {outstandingBalance.toFixed(2)}
+                        Rs. {formatCurrency(outstandingBalance)}
                       </div>
                     </div>
                   </div>
@@ -5295,7 +5296,7 @@ export default function Suppliers({ setToast }) {
                     >
                       {suppliers.map(s => (
                         <option key={s.SupplierID} value={s.SupplierID}>
-                          {s.SupplierName} — Owes: Rs. {Number(s.CurrentBalance).toFixed(2)}
+                          {s.SupplierName} — Owes: Rs. {formatCurrency(Number(s.CurrentBalance))}
                         </option>
                       ))}
                     </select>
@@ -5337,7 +5338,7 @@ export default function Suppliers({ setToast }) {
                           fontSize:'14px', fontWeight:'800',
                           color: balanceAfter <= 0 ? '#10b981' : '#f59e0b'
                         }}>
-                          Rs. {Math.abs(balanceAfter).toFixed(2)} {balanceAfter < 0 ? '(Overpaid)' : ''}
+                          Rs. {formatCurrency(Math.abs(balanceAfter))} {balanceAfter < 0 ? '(Overpaid)' : ''}
                         </span>
                       </div>
                     )}
@@ -5558,7 +5559,7 @@ export default function Suppliers({ setToast }) {
                       <div style={{ textAlign:'right' }}>
                         <div style={{ fontSize:'11px', color:'rgba(148,163,184,0.6)' }}>Outstanding Bal</div>
                         <div style={{ fontSize:'14px', fontWeight:'800', color: outstandingBalance > 0 ? '#f59e0b' : '#38bdf8', marginTop:'2px' }}>
-                          Rs. {outstandingBalance.toFixed(2)}
+                          Rs. {formatCurrency(outstandingBalance)}
                         </div>
                       </div>
                     </div>
@@ -5709,7 +5710,7 @@ export default function Suppliers({ setToast }) {
                     <div style={{ display:'flex', justifyContent:'space-between' }}>
                       <span>New Projected Balance:</span>
                       <span style={{ fontWeight:'700', color: balanceAfter > 0 ? '#f59e0b' : '#38bdf8' }}>
-                        Rs. {balanceAfter.toFixed(2)}
+                        Rs. {formatCurrency(balanceAfter)}
                       </span>
                     </div>
                   </div>
@@ -5938,7 +5939,7 @@ export default function Suppliers({ setToast }) {
                                                 setToast({ type: 'success', message: `Merged: ${p.Name}` });
                                               } else {
                                                 newItems[index].productId = p.ProductID;
-                                                newItems[index].unitCost = Number(p.Cost).toFixed(2);
+                                                newItems[index].unitCost = formatCurrency(Number(p.Cost));
                                                 newItems[index].searchQuery = `${p.Name} (${p.Barcode || p.SKU})`;
                                               }
                                               setDirectPurchaseForm(prev => ({ ...prev, items: newItems }));
@@ -6013,7 +6014,7 @@ export default function Suppliers({ setToast }) {
                                 </select>
                               </td>
                               <td style={{ padding: '6px', textAlign: 'right', fontWeight: '700', color: 'white', verticalAlign: 'middle', fontSize: '13px' }} className="mono">
-                                Rs. {amount.toFixed(2)}
+                                Rs. {formatCurrency(amount)}
                               </td>
                               <td style={{ padding: '6px', textAlign: 'center' }}>
                                 <button
@@ -6086,7 +6087,7 @@ export default function Suppliers({ setToast }) {
                       Total Items: <strong style={{ color: 'white', fontSize: '13px' }}>{totalQty.toFixed(0)}</strong>
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      Grand Total: <strong style={{ color: '#10b981', fontSize: '14px' }} className="mono">Rs. {grandTotal.toFixed(2)}</strong>
+                      Grand Total: <strong style={{ color: '#10b981', fontSize: '14px' }} className="mono">Rs. {formatCurrency(grandTotal)}</strong>
                     </div>
                   </div>
 
@@ -6354,7 +6355,7 @@ export default function Suppliers({ setToast }) {
                                                 setToast({ type: 'success', message: `Merged: ${p.Name}` });
                                               } else {
                                                 newItems[index].productId = p.ProductID;
-                                                newItems[index].unitCost = Number(p.Cost).toFixed(2);
+                                                newItems[index].unitCost = Number(p.Cost);
                                                 newItems[index].searchQuery = `${p.Name} (${p.Barcode || p.SKU})`;
                                               }
                                               setDirectCreditPurchaseForm(prev => ({ ...prev, items: newItems }));
@@ -6453,7 +6454,7 @@ export default function Suppliers({ setToast }) {
                                 </select>
                               </td>
                               <td style={{ padding: '6px', textAlign: 'right', fontWeight: '700', color: 'white', verticalAlign: 'middle', fontSize: '13px' }} className="mono">
-                                Rs. {amount.toFixed(2)}
+Rs. {formatCurrency(amount)}
                               </td>
                               <td style={{ padding: '6px', textAlign: 'center' }}>
                                 <button
@@ -6489,7 +6490,7 @@ export default function Suppliers({ setToast }) {
                         value={directCreditPurchaseForm.paidAmount}
                         onChange={(e) => setDirectCreditPurchaseForm(prev => ({ ...prev, paidAmount: e.target.value }))}
                         min="0.00"
-                        max={grandTotal.toFixed(2)}
+max={formatCurrency(grandTotal)}
                         step="0.01"
                       />
                     </div>
@@ -6533,22 +6534,22 @@ export default function Suppliers({ setToast }) {
                       Total Items: <strong style={{ color: 'white', fontSize: '13px' }}>{totalQty.toFixed(0)}</strong>
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      Subtotal: <strong style={{ color: 'white', fontSize: '13px' }} className="mono">Rs. {subTotal.toFixed(2)}</strong>
+Subtotal: <strong style={{ color: 'white', fontSize: '13px' }} className="mono">Rs. {formatCurrency(subTotal)}</strong>
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      Discount: <strong style={{ color: '#ef4444', fontSize: '13px' }} className="mono">-Rs. {totalDiscount.toFixed(2)}</strong>
+Discount: <strong style={{ color: '#ef4444', fontSize: '13px' }} className="mono">-Rs. {formatCurrency(totalDiscount)}</strong>
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      Tax: <strong style={{ color: '#10b981', fontSize: '13px' }} className="mono">+Rs. {totalTax.toFixed(2)}</strong>
+Tax: <strong style={{ color: '#10b981', fontSize: '13px' }} className="mono">+Rs. {formatCurrency(totalTax)}</strong>
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      Grand Total: <strong style={{ color: 'white', fontSize: '14px' }} className="mono">Rs. {grandTotal.toFixed(2)}</strong>
+Grand Total: <strong style={{ color: 'white', fontSize: '14px' }} className="mono">Rs. {formatCurrency(grandTotal)}</strong>
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      Paid Amount: <strong style={{ color: '#10b981', fontSize: '14px' }} className="mono">Rs. {paidAmountVal.toFixed(2)}</strong>
+Paid Amount: <strong style={{ color: '#10b981', fontSize: '14px' }} className="mono">Rs. {formatCurrency(paidAmountVal)}</strong>
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                      Balance Due: <strong style={{ color: '#ef4444', fontSize: '14px' }} className="mono">Rs. {balanceDue.toFixed(2)}</strong>
+Balance Due: <strong style={{ color: '#ef4444', fontSize: '14px' }} className="mono">Rs. {formatCurrency(balanceDue)}</strong>
                     </div>
                   </div>
 
@@ -6585,7 +6586,7 @@ export default function Suppliers({ setToast }) {
                     required
                   >
                     {suppliers.map(s => (
-                      <option key={s.SupplierID} value={s.SupplierID}>{s.SupplierName} (Owes: Rs. {Number(s.CurrentBalance).toFixed(2)})</option>
+                      <option key={s.SupplierID} value={s.SupplierID}>{s.SupplierName} (Owes: Rs. {formatCurrency(s.CurrentBalance)})</option>
                     ))}
                   </select>
                 </div>
@@ -6794,8 +6795,8 @@ export default function Suppliers({ setToast }) {
                           <td className="mono" style={{ padding: '8px 12px', fontSize: '11px', color: 'var(--text-secondary)' }}>{item.SKU || item.Barcode || '--'}</td>
                           <td className="mono" style={{ padding: '8px 12px', fontSize: '11px' }}>{item.BatchNo || '--'}</td>
                           <td style={{ padding: '8px 12px', textAlign: 'center' }} className="mono">{parseFloat(item.Quantity).toFixed(3)}</td>
-                          <td style={{ padding: '8px 12px', textAlign: 'right' }} className="mono">Rs. {Number(item.UnitCost).toFixed(2)}</td>
-                          <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--danger)' }} className="mono">Rs. {Number(item.Subtotal).toFixed(2)}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right' }} className="mono">Rs. {formatCurrency(item.UnitCost)}</td>
+                          <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700', color: 'var(--danger)' }} className="mono">Rs. {formatCurrency(item.Subtotal)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -6806,7 +6807,7 @@ export default function Suppliers({ setToast }) {
               {/* Total & Footer */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '16px' }}>
                 <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-                  Total Returned Value: <strong className="mono" style={{ fontSize: '16px', color: 'var(--danger)' }}>Rs. {Number(selectedReturn.TotalAmount).toFixed(2)}</strong>
+                  Total Returned Value: <strong className="mono" style={{ fontSize: '16px', color: 'var(--danger)' }}>Rs. {formatCurrency(selectedReturn.TotalAmount)}</strong>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px' }}>

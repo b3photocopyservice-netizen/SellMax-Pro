@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useMemo } from 'react';
+import React, { createContext, useState, useContext, useMemo, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 
 const CartContext = createContext(null);
@@ -8,7 +8,30 @@ export const CartProvider = ({ children }) => {
   const [cartItems, setCartItems] = useState([]);
   const [attachedCustomer, setAttachedCustomer] = useState(null);
   const [discountAmount, setDiscountAmount] = useState(0);
-  const taxRate = 0.10; // Fixed 10% standard tax
+  const [taxRate, setTaxRate] = useState(0.10); // default 10%
+  const [taxActive, setTaxActive] = useState(true);
+
+  // Fetch company tax configuration on mount
+  useEffect(() => {
+    const fetchTaxConfig = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/company`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const percentage = data.TaxPercentage !== undefined ? Number(data.TaxPercentage) : 10;
+          setTaxRate(percentage / 100);
+          setTaxActive(data.IsTaxActive !== undefined ? !!data.IsTaxActive : true);
+        } else {
+          console.warn('Failed to fetch tax config, using defaults.');
+        }
+      } catch (err) {
+        console.error('Error fetching tax config:', err);
+      }
+    };
+    fetchTaxConfig();
+  }, [API_URL, token]);
 
   const addToCart = (product) => {
     setCartItems((prevItems) => {
@@ -34,6 +57,7 @@ export const CartProvider = ({ children }) => {
             sku: product.SKU,
             barcode: product.Barcode,
             price: product.Price,
+            originalPrice: product.Price,
             cost: product.Cost,
             quantity: 1,
             subtotal: product.Price
@@ -55,11 +79,24 @@ export const CartProvider = ({ children }) => {
     if (quantity > maxStock) {
       throw new Error(`Cannot adjust quantity to ${quantity}. Only ${maxStock} are in stock.`);
     }
-
     setCartItems((prevItems) =>
       prevItems.map((item) =>
         item.productId === productId
           ? { ...item, quantity, subtotal: Number((quantity * item.price).toFixed(2)) }
+          : item
+      )
+    );
+  };
+
+  const overrideItemPrice = (productId, newPrice) => {
+    setCartItems((prevItems) =>
+      prevItems.map((item) =>
+        item.productId === productId
+          ? { 
+              ...item, 
+              price: Number(newPrice), 
+              subtotal: Number((item.quantity * Number(newPrice)).toFixed(2)) 
+            }
           : item
       )
     );
@@ -85,9 +122,10 @@ export const CartProvider = ({ children }) => {
   }, [cartItems]);
 
   const taxAmount = useMemo(() => {
+    if (!taxActive) return 0;
     const discounted = Math.max(0, subtotal - discountAmount);
     return Number((discounted * taxRate).toFixed(2));
-  }, [subtotal, discountAmount]);
+  }, [subtotal, discountAmount, taxRate, taxActive]);
 
   const totalAmount = useMemo(() => {
     const discounted = Math.max(0, subtotal - discountAmount);
@@ -95,7 +133,7 @@ export const CartProvider = ({ children }) => {
   }, [subtotal, discountAmount, taxAmount]);
 
   // Checkout API connector
-  const checkout = async (payments) => {
+  const checkout = async (payments, managerPin = null) => {
     const payload = {
       customerId: attachedCustomer ? attachedCustomer.CustomerID : null,
       subtotal,
@@ -103,7 +141,8 @@ export const CartProvider = ({ children }) => {
       taxAmount,
       totalAmount,
       items: cartItems,
-      payments
+      payments,
+      managerPin
     };
 
     const res = await fetch(`${API_URL}/api/sales/checkout`, {
@@ -125,7 +164,7 @@ export const CartProvider = ({ children }) => {
   };
 
   // Suspend/Hold API connector
-  const holdSale = async (heldNote) => {
+  const holdSale = async (heldBillNumber = null) => {
     const payload = {
       customerId: attachedCustomer ? attachedCustomer.CustomerID : null,
       subtotal,
@@ -133,7 +172,7 @@ export const CartProvider = ({ children }) => {
       taxAmount,
       totalAmount,
       items: cartItems,
-      heldNote
+      heldBillNumber
     };
 
     const res = await fetch(`${API_URL}/api/sales/hold`, {
@@ -162,11 +201,11 @@ export const CartProvider = ({ children }) => {
       sku: item.SKU,
       barcode: item.Barcode,
       price: item.Price,
+      originalPrice: item.OriginalPrice !== undefined ? item.OriginalPrice : item.Price,
       cost: item.Cost,
       quantity: item.Quantity,
       subtotal: item.Subtotal
     }));
-
     setCartItems(items);
     setDiscountAmount(heldOrder.order.DiscountAmount);
     if (heldOrder.order.CustomerID) {
@@ -187,9 +226,12 @@ export const CartProvider = ({ children }) => {
       subtotal,
       taxAmount,
       totalAmount,
+      taxRate,
+      taxActive,
       addToCart,
       removeFromCart,
       updateQuantity,
+      overrideItemPrice,
       setCustomer,
       applyDiscount,
       clearCart,

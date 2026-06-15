@@ -86,4 +86,16 @@ router.get('/expiry', authenticateToken, async (req, res, next) => {
   }
 });
 
+// GET /api/reports/price-overrides
+router.get('/price-overrides', authenticateToken, checkPermission('VIEW_REPORTS'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const { startDate, endDate } = req.query;
+    const overrides = await reportsService.getPriceOverridesLog(companyId, startDate, endDate);
+    res.json(overrides);
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

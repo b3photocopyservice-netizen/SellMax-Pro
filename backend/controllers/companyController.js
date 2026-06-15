@@ -6,7 +6,7 @@ const companyService = require('../services/companyService');
 const { authenticateToken, checkPermission } = require('../middlewares/auth');
 
 // GET /api/company
-router.get('/', authenticateToken, checkPermission('MANAGE_SETTINGS'), async (req, res, next) => {
+router.get('/', authenticateToken, async (req, res, next) => {
   try {
     const companyId = req.user.companyId;
     const profile = await companyService.getCompanyProfile(companyId);
