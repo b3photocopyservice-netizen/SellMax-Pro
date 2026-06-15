@@ -30,8 +30,15 @@ class SalesRepository {
 
     if (filters.startDate && filters.endDate) {
       sqlQuery += ` AND so.OrderDate BETWEEN @StartDate AND @EndDate`;
-      params.StartDate = new Date(filters.startDate);
-      params.EndDate = new Date(filters.endDate);
+      const parseLocalDate = (dateStr, endOfDay = false) => {
+        const parts = dateStr.split('-');
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+        return endOfDay ? new Date(year, month, day, 23, 59, 59, 999) : new Date(year, month, day, 0, 0, 0, 0);
+      };
+      params.StartDate = parseLocalDate(filters.startDate, false);
+      params.EndDate = parseLocalDate(filters.endDate, true);
     }
 
     if (filters.customerId) {

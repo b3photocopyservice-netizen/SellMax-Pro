@@ -12,7 +12,128 @@ export default function Reports({ setToast }) {
   // Reports filters
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [datePreset, setDatePreset] = useState('all');
   const [searchInvoiceId, setSearchInvoiceId] = useState('');
+
+  const handlePresetChange = (preset) => {
+    setDatePreset(preset);
+    
+    if (preset === 'custom') {
+      return;
+    }
+    
+    if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+      return;
+    }
+    
+    const now = new Date();
+    let start = '';
+    let end = '';
+    
+    const formatDate = (d) => {
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
+    switch (preset) {
+      case 'today': {
+        const d = new Date(now);
+        start = formatDate(d);
+        end = formatDate(d);
+        break;
+      }
+      case 'yesterday': {
+        const d = new Date(now);
+        d.setDate(d.getDate() - 1);
+        start = formatDate(d);
+        end = formatDate(d);
+        break;
+      }
+      case 'this-week': {
+        const d = new Date(now);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        const startOfWeek = new Date(d.setDate(diff));
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6);
+        start = formatDate(startOfWeek);
+        end = formatDate(endOfWeek);
+        break;
+      }
+      case 'last-week': {
+        const d = new Date(now);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1) - 7;
+        const startOfLastWeek = new Date(d.setDate(diff));
+        const endOfLastWeek = new Date(startOfLastWeek);
+        endOfLastWeek.setDate(startOfLastWeek.getDate() + 6);
+        start = formatDate(startOfLastWeek);
+        end = formatDate(endOfLastWeek);
+        break;
+      }
+      case 'this-month': {
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        start = formatDate(startOfMonth);
+        end = formatDate(endOfMonth);
+        break;
+      }
+      case 'last-month': {
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+        start = formatDate(startOfLastMonth);
+        end = formatDate(endOfLastMonth);
+        break;
+      }
+      case 'this-quarter': {
+        const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3;
+        const startOfQuarter = new Date(now.getFullYear(), quarterStartMonth, 1);
+        const endOfQuarter = new Date(now.getFullYear(), quarterStartMonth + 3, 0);
+        start = formatDate(startOfQuarter);
+        end = formatDate(endOfQuarter);
+        break;
+      }
+      case 'last-quarter': {
+        let quarterStartMonth = Math.floor(now.getMonth() / 3) * 3 - 3;
+        let year = now.getFullYear();
+        if (quarterStartMonth < 0) {
+          quarterStartMonth += 12;
+          year -= 1;
+        }
+        const startOfLastQuarter = new Date(year, quarterStartMonth, 1);
+        const endOfLastQuarter = new Date(year, quarterStartMonth + 3, 0);
+        start = formatDate(startOfLastQuarter);
+        end = formatDate(endOfLastQuarter);
+        break;
+      }
+      case 'this-fy': {
+        const year = now.getFullYear();
+        const startOfFY = new Date(year, 0, 1);
+        const endOfFY = new Date(year, 11, 31);
+        start = formatDate(startOfFY);
+        end = formatDate(endOfFY);
+        break;
+      }
+      case 'last-fy': {
+        const year = now.getFullYear() - 1;
+        const startOfLastFY = new Date(year, 0, 1);
+        const endOfLastFY = new Date(year, 11, 31);
+        start = formatDate(startOfLastFY);
+        end = formatDate(endOfLastFY);
+        break;
+      }
+      default:
+        break;
+    }
+    
+    setStartDate(start);
+    setEndDate(end);
+  };
+
   
   // Data sets
   const [salesJournal, setSalesJournal] = useState([]);
@@ -407,26 +528,54 @@ export default function Reports({ setToast }) {
         
         {activeTab !== 'customers' && (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Calendar size={16} style={{ color: 'var(--text-secondary)' }} />
-              <input
-                type="date"
-                className="form-input"
-                style={{ width: '150px', padding: '6px 12px', fontSize: '13px' }}
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-              <span style={{ color: 'var(--text-secondary)' }}>to</span>
-              <input
-                type="date"
-                className="form-input"
-                style={{ width: '150px', padding: '6px 12px', fontSize: '13px' }}
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <select
+                className="form-select"
+                style={{ width: '180px', padding: '6px 12px', fontSize: '13px' }}
+                value={datePreset}
+                onChange={(e) => handlePresetChange(e.target.value)}
+              >
+                <option value="all">All Time</option>
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="this-week">This Week</option>
+                <option value="last-week">Last Week</option>
+                <option value="this-month">This Month</option>
+                <option value="last-month">Last Month</option>
+                <option value="this-quarter">This Quarter</option>
+                <option value="last-quarter">Last Quarter</option>
+                <option value="this-fy">This Fiscal Year</option>
+                <option value="last-fy">Last Fiscal Year</option>
+                <option value="custom">Custom Date Range</option>
+              </select>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Calendar size={16} style={{ color: 'var(--text-secondary)', marginLeft: '8px' }} />
+                <input
+                  type="date"
+                  className="form-input"
+                  style={{ width: '150px', padding: '6px 12px', fontSize: '13px' }}
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setDatePreset('custom');
+                  }}
+                />
+                <span style={{ color: 'var(--text-secondary)' }}>to</span>
+                <input
+                  type="date"
+                  className="form-input"
+                  style={{ width: '150px', padding: '6px 12px', fontSize: '13px' }}
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setDatePreset('custom');
+                  }}
+                />
+              </div>
             </div>
             {(startDate || endDate) && (
-              <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12.5px' }} onClick={() => { setStartDate(''); setEndDate(''); }}>
+              <button className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '12.5px' }} onClick={() => { setStartDate(''); setEndDate(''); setDatePreset('all'); }}>
                 Clear Dates
               </button>
             )}

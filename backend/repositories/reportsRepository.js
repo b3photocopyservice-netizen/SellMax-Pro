@@ -1,11 +1,20 @@
 const db = require('../config/db');
 
+const parseLocalDate = (dateStr, endOfDay = false) => {
+  if (!dateStr) return null;
+  const parts = dateStr.split('-');
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  return endOfDay ? new Date(year, month, day, 23, 59, 59, 999) : new Date(year, month, day, 0, 0, 0, 0);
+};
+
 class ReportsRepository {
   async getDailySalesSummary(companyId, startDate = null, endDate = null) {
     const params = { CompanyID: companyId };
     
-    if (startDate) params.StartDate = new Date(startDate);
-    if (endDate) params.EndDate = new Date(endDate);
+    if (startDate) params.StartDate = parseLocalDate(startDate, false);
+    if (endDate) params.EndDate = parseLocalDate(endDate, true);
 
     const result = await db.executeProcedure('dbo.sp_GetDailySalesSummary', params);
     
@@ -31,8 +40,8 @@ class ReportsRepository {
   async getProductPerformance(companyId, startDate = null, endDate = null, limit = 10) {
     const params = { CompanyID: companyId };
     
-    if (startDate) params.StartDate = new Date(startDate);
-    if (endDate) params.EndDate = new Date(endDate);
+    if (startDate) params.StartDate = parseLocalDate(startDate, false);
+    if (endDate) params.EndDate = parseLocalDate(endDate, true);
     if (limit) params.Limit = parseInt(limit, 10);
 
     const result = await db.executeProcedure('dbo.sp_GetProductPerformance', params);
@@ -78,8 +87,8 @@ class ReportsRepository {
 
     if (startDate && endDate) {
       sqlQuery += ` AND po.CreatedAt BETWEEN @StartDate AND @EndDate`;
-      params.StartDate = new Date(startDate);
-      params.EndDate = new Date(endDate);
+      params.StartDate = parseLocalDate(startDate, false);
+      params.EndDate = parseLocalDate(endDate, true);
     }
 
     sqlQuery += ` ORDER BY po.CreatedAt DESC`;
