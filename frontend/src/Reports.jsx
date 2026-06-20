@@ -164,6 +164,19 @@ export default function Reports({ setToast }) {
     fetchReportData();
   }, [activeTab, startDate, endDate]);
 
+  // Escape key handler to close reports modals
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (showInvoiceModal) setShowInvoiceModal(false);
+        if (showReturnModal) setShowReturnModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showInvoiceModal, showReturnModal]);
+
+
   const fetchReportData = async () => {
     try {
       setLoading(true);

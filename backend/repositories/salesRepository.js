@@ -508,6 +508,33 @@ class SalesRepository {
       throw err;
     }
   }
+
+  async getCashDrawerSessionToday(companyId, userId) {
+    const sqlQuery = `
+      SELECT TOP 1 * FROM dbo.CashDrawerSessions
+      WHERE CompanyID = @CompanyID AND UserID = @UserID
+        AND CAST(OpeningTime AS DATE) = CAST(GETDATE() AS DATE)
+      ORDER BY SessionID DESC
+    `;
+    const result = await db.query(sqlQuery, { CompanyID: companyId, UserID: userId });
+    return result.recordset[0] || null;
+  }
+
+  async createCashDrawerSession(companyId, userId, data) {
+    const sqlQuery = `
+      INSERT INTO dbo.CashDrawerSessions (CompanyID, UserID, OpeningBalance, OpeningDenominations, Status, TerminalID)
+      OUTPUT inserted.*
+      VALUES (@CompanyID, @UserID, @OpeningBalance, @OpeningDenominations, 'Open', @TerminalID)
+    `;
+    const result = await db.query(sqlQuery, {
+      CompanyID: companyId,
+      UserID: userId,
+      OpeningBalance: data.openingBalance || 0.00,
+      OpeningDenominations: data.openingDenominations ? JSON.stringify(data.openingDenominations) : null,
+      TerminalID: data.terminalId || 'Terminal-01'
+    });
+    return result.recordset[0];
+  }
 }
 
 module.exports = new SalesRepository();

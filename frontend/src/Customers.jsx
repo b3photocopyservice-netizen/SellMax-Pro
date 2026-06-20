@@ -25,6 +25,18 @@ export default function Customers({ setToast }) {
     fetchCustomers();
   }, []);
 
+  // Escape key handler to close customer modals
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (showCustomerModal) setShowCustomerModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showCustomerModal]);
+
+
   const fetchCustomers = async () => {
     try {
       setLoading(true);

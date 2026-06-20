@@ -118,6 +118,26 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showAdminAuthModal, adminAuthMode, adminPin, selectedAdminUser, adminSubmitting]);
 
+  // Global Escape key handler to close App-level modals
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (showAdminAuthModal) {
+          setShowAdminAuthModal(false);
+          setAdminPin('');
+          setAdminPassword('');
+          setAdminError('');
+        }
+        if (showCashDrawerModal) {
+          setShowCashDrawerModal(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showAdminAuthModal, showCashDrawerModal]);
+
+
   const handlePinVerification = async (pinVal) => {
     setAdminError('');
     setAdminSubmitting(true);
@@ -438,7 +458,9 @@ export default function App() {
                   <button 
                     className="btn btn-secondary"
                     style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: '6px 12px' }}
-                    onClick={() => setShowCashDrawerModal(true)}
+                    onClick={() => {
+                      window.dispatchEvent(new Event('open-cash-drawer-details'));
+                    }}
                   >
                     <DollarSign size={15} />
                     <span>Cash Drawer</span>

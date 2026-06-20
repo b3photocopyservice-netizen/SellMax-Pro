@@ -97,6 +97,32 @@ poolPromise.then(async (pool) => {
           PRINT 'Created table dbo.PriceOverrides.';
       END
     `);
+
+    // Create CashDrawerSessions table if not exists
+    await pool.request().query(`
+      IF OBJECT_ID('dbo.CashDrawerSessions', 'U') IS NULL
+      BEGIN
+          CREATE TABLE dbo.CashDrawerSessions (
+              SessionID INT IDENTITY(1,1) PRIMARY KEY,
+              CompanyID INT NOT NULL,
+              UserID INT NOT NULL,
+              OpeningBalance DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+              OpeningTime DATETIME NOT NULL DEFAULT GETDATE(),
+              OpeningDenominations NVARCHAR(MAX) NULL,
+              ClosingBalance DECIMAL(18,2) NULL,
+              ClosingTime DATETIME NULL,
+              ClosingDenominations NVARCHAR(MAX) NULL,
+              ExpectedCash DECIMAL(18,2) NULL,
+              ActualCash DECIMAL(18,2) NULL,
+              DifferenceAmount DECIMAL(18,2) NULL,
+              Status NVARCHAR(20) NOT NULL DEFAULT 'Open',
+              TerminalID NVARCHAR(50) NOT NULL DEFAULT 'Terminal-01',
+              CONSTRAINT FK_CashDrawerSessions_Company FOREIGN KEY (CompanyID) REFERENCES dbo.Companies(CompanyID),
+              CONSTRAINT FK_CashDrawerSessions_User FOREIGN KEY (UserID) REFERENCES dbo.Users(UserID)
+          );
+          PRINT 'Created table dbo.CashDrawerSessions.';
+      END
+    `);
     
     console.log('Database migrations completed successfully.');
   } catch (migErr) {

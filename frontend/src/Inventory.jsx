@@ -48,6 +48,22 @@ export default function Inventory({ setToast }) {
     fetchInventory();
   }, []);
 
+  // Escape key handler to close all open inventory modals/panels
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (showBatchPanel) setShowBatchPanel(false);
+        if (showProductModal) setShowProductModal(false);
+        if (showCategoryModal) setShowCategoryModal(false);
+        if (showUomModal) setShowUomModal(false);
+        if (showBrandModal) setShowBrandModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showBatchPanel, showProductModal, showCategoryModal, showUomModal, showBrandModal]);
+
+
   const fetchInventory = async () => {
     try {
       setLoading(true);

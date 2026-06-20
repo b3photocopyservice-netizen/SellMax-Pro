@@ -34,6 +34,20 @@ export default function UserManagement({ setToast }) {
     fetchAdminData();
   }, [activeTab]);
 
+  // Escape key handler to close user management modals
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (showUserModal) setShowUserModal(false);
+        if (showPasswordModal) setShowPasswordModal(false);
+        if (showPinModal) setShowPinModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showUserModal, showPasswordModal, showPinModal]);
+
+
   const fetchAdminData = async () => {
     try {
       setLoading(true);

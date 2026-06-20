@@ -3,6 +3,7 @@ import { useCart } from './contexts/CartContext';
 import formatCurrency from './utils/formatCurrency';
 import { useAuth } from './contexts/AuthContext';
 import { Search, Plus, Minus, Trash2, FolderMinus, UserPlus, CreditCard, RefreshCw, ShoppingCart, Lock, DollarSign, Printer, CheckCircle, AlertTriangle, Clock, Eye, EyeOff } from 'lucide-react';
+import usePermanentFocus from './hooks/usePermanentFocus';
 
 // Card Brand Logos for POS Checkout
 const VisaLogo = () => (
@@ -79,7 +80,7 @@ const CartQtyInput = ({ item, dbProduct, updateQuantity, removeFromCart, setToas
 };
 
 export default function Register({ setToast }) {
-  const { token, API_URL } = useAuth();
+  const { token, user, API_URL } = useAuth();
   const {
     cartItems, attachedCustomer, discountAmount, subtotal, taxAmount, totalAmount,
     addToCart, removeFromCart, updateQuantity, overrideItemPrice, setCustomer, applyDiscount, clearCart,
@@ -118,6 +119,27 @@ export default function Register({ setToast }) {
 
   // Checkout Write-off/Round-off State
   const [writeOffAmount, setWriteOffAmount] = useState(0);
+
+  // Cash Drawer Day Start State
+  const [drawerSession, setDrawerSession] = useState(null);
+  const [showDayStartModal, setShowDayStartModal] = useState(false);
+  const [showDrawerDetailsModal, setShowDrawerDetailsModal] = useState(false);
+  const [terminalId, setTerminalId] = useState('Terminal-01');
+  const [dayStartMode, setDayStartMode] = useState('denominations'); // 'denominations' or 'direct'
+  const [dayStartDirectAmt, setDayStartDirectAmt] = useState('');
+  const [dayStartDenoms, setDayStartDenoms] = useState({
+    5000: 0,
+    2000: 0,
+    1000: 0,
+    500: 0,
+    100: 0,
+    50: 0,
+    20: 0,
+    10: 0,
+    5: 0
+  });
+  const [dayStartSubmitting, setDayStartSubmitting] = useState(false);
+  const [dayStartError, setDayStartError] = useState('');
 
   const getCompanyLogoUrl = (url) => {
     if (!url) return null;
@@ -207,14 +229,37 @@ export default function Register({ setToast }) {
   // References for barcode scanner auto-focus
   const barcodeInputRef = useRef(null);
 
+  // Permanent focus: keep cursor on barcode input at all times
+  // Suspended while any modal/overlay is open so they remain interactive
+  const anyModalOpen = showDayStartModal || showCheckoutModal || showReceiptModal
+    || showHeldDrawer || showOverrideModal || showDrawerDetailsModal;
+  usePermanentFocus(barcodeInputRef, !anyModalOpen);
+
+  const checkDrawerStatus = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/sales/cash-drawer/status`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDrawerSession(data.session);
+        if (!data.hasSession) {
+          setShowDayStartModal(true);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check cash drawer status:', err);
+    }
+  };
+
   useEffect(() => {
     fetchProducts();
     fetchCategories();
     fetchCustomers();
     fetchHeldSalesCount();
     fetchCompanyInfo();
-    // Auto-focus barcode scanner input on load
-    if (barcodeInputRef.current) barcodeInputRef.current.focus();
+    checkDrawerStatus();
+    // usePermanentFocus handles initial focus — no manual call needed here
 
     // Listen for receipt printed message to auto-close receipt modal
     const handleMessage = (event) => {
@@ -227,6 +272,35 @@ export default function Register({ setToast }) {
       window.removeEventListener('message', handleMessage);
     };
   }, []);
+
+  // Escape key handler to close POS register modals/suspension drawer
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (showOverrideModal) setShowOverrideModal(false);
+        if (showCheckoutModal) setShowCheckoutModal(false);
+        if (showReceiptModal) setShowReceiptModal(false);
+        if (showHeldDrawer) setShowHeldDrawer(false);
+        if (showDrawerDetailsModal) setShowDrawerDetailsModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showOverrideModal, showCheckoutModal, showReceiptModal, showHeldDrawer, showDrawerDetailsModal]);
+
+  // Listen to cash drawer details requests from parent app shell
+  useEffect(() => {
+    const handleOpenDetails = () => {
+      if (drawerSession) {
+        setShowDrawerDetailsModal(true);
+      } else {
+        setShowDayStartModal(true);
+      }
+    };
+    window.addEventListener('open-cash-drawer-details', handleOpenDetails);
+    return () => window.removeEventListener('open-cash-drawer-details', handleOpenDetails);
+  }, [drawerSession]);
+
 
   const fetchProducts = async () => {
     try {
@@ -341,6 +415,54 @@ export default function Register({ setToast }) {
     return { blocked: false, warning: null };
   };
 
+  // Day Start / Drawer Open Submit
+  const handleDayStartSubmit = async () => {
+    setDayStartError('');
+    setDayStartSubmitting(true);
+
+    let openingBalance = 0;
+    if (dayStartMode === 'denominations') {
+      openingBalance = Object.entries(dayStartDenoms).reduce((sum, [denom, count]) => {
+        return sum + (Number(denom) * (Number(count) || 0));
+      }, 0);
+    } else {
+      openingBalance = parseFloat(dayStartDirectAmt);
+      if (isNaN(openingBalance) || openingBalance < 0) {
+        setDayStartError('Please enter a valid opening balance amount.');
+        setDayStartSubmitting(false);
+        return;
+      }
+    }
+
+    try {
+      const res = await fetch(`${API_URL}/api/sales/cash-drawer/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          openingBalance,
+          openingDenominations: dayStartMode === 'denominations' ? dayStartDenoms : null,
+          terminalId
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to start cash drawer session.');
+      }
+
+      setDrawerSession(data.session);
+      setShowDayStartModal(false);
+      setToast({ type: 'success', message: `Cash drawer opened with Rs. ${openingBalance.toLocaleString('en-LK', { minimumFractionDigits: 2 })}` });
+    } catch (err) {
+      setDayStartError(err.message || 'An error occurred. Please try again.');
+    } finally {
+      setDayStartSubmitting(false);
+    }
+  };
+
   // Price Override Helpers
   const openOverrideModal = (item) => {
     const dbProduct = products.find(p => p.ProductID === item.productId);
@@ -402,9 +524,13 @@ export default function Register({ setToast }) {
     setToast({ type: 'success', message: `Price updated to Rs. ${newPrice.toFixed(2)} for '${overrideItem.name}'.` });
   };
 
-  // Unified Search / Barcode Handler (adds item to cart instantly when exact barcode/SKU is submitted)
   const handleSearchSubmit = (e) => {
     e.preventDefault();
+    if (!drawerSession) {
+      setShowDayStartModal(true);
+      setToast({ type: 'warning', message: 'Opening cash balance must be set before selling products.' });
+      return;
+    }
     const query = searchQuery.trim();
     if (!query) return;
 
@@ -441,6 +567,11 @@ export default function Register({ setToast }) {
 
   // Click handler for catalog product cards
   const handleProductClick = (product) => {
+    if (!drawerSession) {
+      setShowDayStartModal(true);
+      setToast({ type: 'warning', message: 'Opening cash balance must be set before selling products.' });
+      return;
+    }
     if (product.IsActive === false || product.IsActive === 0) {
       setToast({ type: 'error', message: `Product '${product.Name}' is inactive and cannot be sold.` });
       return;
@@ -464,6 +595,11 @@ export default function Register({ setToast }) {
 
   // Hold Sale directly without modal
   const handleHoldSaleDirectly = async () => {
+    if (!drawerSession) {
+      setShowDayStartModal(true);
+      setToast({ type: 'warning', message: 'Opening cash balance must be set before suspended billing.' });
+      return;
+    }
     if (cartItems.length === 0) return;
     try {
       const res = await holdSale(activeHeldBillNumber);
@@ -480,6 +616,11 @@ export default function Register({ setToast }) {
 
   // Resume Sale trigger
   const handleResumeSaleClick = async (heldOrder) => {
+    if (!drawerSession) {
+      setShowDayStartModal(true);
+      setToast({ type: 'warning', message: 'Opening cash balance must be set before resuming suspended bills.' });
+      return;
+    }
     try {
       const res = await fetch(`${API_URL}/api/sales/resume/${heldOrder.OrderID}`, {
         method: 'POST',
@@ -500,6 +641,11 @@ export default function Register({ setToast }) {
 
   // Cancel/Delete Held Sale trigger
   const handleCancelHeldSaleClick = async (heldOrder) => {
+    if (!drawerSession) {
+      setShowDayStartModal(true);
+      setToast({ type: 'warning', message: 'Opening cash balance must be set before actions.' });
+      return;
+    }
     if (!window.confirm(`Are you sure you want to cancel and permanently delete Bill ${heldOrder.HeldBillNumber}?`)) return;
     try {
       const res = await fetch(`${API_URL}/api/sales/held/${heldOrder.OrderID}`, {
@@ -523,6 +669,11 @@ export default function Register({ setToast }) {
 
   // Open Checkout and preset first split amount
   const handleCheckoutOpen = () => {
+    if (!drawerSession) {
+      setShowDayStartModal(true);
+      setToast({ type: 'warning', message: 'Opening cash balance must be set before processing checkout.' });
+      return;
+    }
     if (cartItems.length === 0) return;
     setWriteOffAmount(0);
     setPaymentSplits([{ method: 'Cash', amount: totalAmount, referenceNumber: '', amountReceived: '' }]);
@@ -859,21 +1010,62 @@ export default function Register({ setToast }) {
                 type="text"
                 className="form-input pos-search"
                 style={{ width: '100%' }}
-                placeholder="Search name, SKU, or scan barcode..."
+                placeholder={showDayStartModal ? "Please enter opening cash balance..." : "Search name, SKU, or scan barcode..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                disabled={showDayStartModal}
               />
             </div>
           </form>
+
+          {/* Top Middle Nice Colored Button */}
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <button 
+              className="btn" 
+              style={{ 
+                background: drawerSession 
+                  ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
+                  : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', 
+                color: 'white', 
+                fontWeight: '600',
+                fontSize: '13px',
+                padding: '8px 16px',
+                borderRadius: '30px',
+                boxShadow: drawerSession 
+                  ? '0 4px 12px rgba(16, 185, 129, 0.2)' 
+                  : '0 4px 12px rgba(245, 158, 11, 0.2)',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              onClick={() => drawerSession ? setShowDrawerDetailsModal(true) : setShowDayStartModal(true)}
+            >
+              <DollarSign size={15} />
+              <span>{drawerSession ? `Drawer Open: Rs. ${drawerSession.OpeningBalance.toLocaleString('en-LK', { minimumFractionDigits: 2 })}` : 'Opening Balance Pending'}</span>
+            </button>
+          </div>
 
           {/* Suspended orders button */}
           <button 
             className="btn btn-secondary" 
             style={{ position: 'relative', display: 'flex', gap: '8px' }}
             onClick={() => setShowHeldDrawer(true)}
+            disabled={showDayStartModal}
           >
             <FolderMinus size={18} />
             <span>Held ({heldSales.length})</span>
+          </button>
+
+          {/* Top Right Shift Status Button */}
+          <button
+            className="btn btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+            onClick={() => drawerSession ? setShowDrawerDetailsModal(true) : setShowDayStartModal(true)}
+          >
+            <Clock size={15} />
+            <span>Drawer Status</span>
           </button>
         </div>
 
@@ -1923,6 +2115,259 @@ export default function Register({ setToast }) {
               <button className="btn btn-primary" onClick={handleOverrideSubmit}>
                 <DollarSign size={15} /> Apply Price
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================================
+         MODAL: DAY START / CASH DRAWER OPENING BALANCE
+         ============================================================================ */}
+      {showDayStartModal && (
+        <div className="modal-overlay" style={{ zIndex: 99999 }}>
+          <div className="modal-content" style={{ width: '500px', padding: '32px' }}>
+            <h3 style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center', fontSize: '20px', fontWeight: '800' }}>
+              <DollarSign size={24} style={{ color: 'var(--success)' }} />
+              Day Start / Cash Drawer Opening
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '24px', textAlign: 'center' }}>
+              Initialize the cash drawer with the starting cash balance.
+            </p>
+
+            {/* Display Meta Information */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 'var(--radius-md)',
+              padding: '16px',
+              marginBottom: '20px',
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '12px',
+              fontSize: '13px'
+            }}>
+              <div>
+                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cashier Name</span>
+                <strong style={{ color: 'var(--text-primary)' }}>{user?.username || 'Cashier'}</strong>
+              </div>
+              <div>
+                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>POS Terminal</span>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  style={{ padding: '4px 8px', fontSize: '12.5px', marginTop: '4px', background: 'rgba(0,0,0,0.3)' }}
+                  value={terminalId}
+                  onChange={(e) => setTerminalId(e.target.value)}
+                />
+              </div>
+              <div>
+                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Date & Time</span>
+                <strong style={{ color: 'var(--text-primary)' }}>{new Date().toLocaleString('en-LK')}</strong>
+              </div>
+              <div>
+                <span style={{ color: 'var(--text-secondary)', display: 'block', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Status</span>
+                <span style={{ color: 'var(--warning)', fontWeight: 'bold' }}>Pending Opening</span>
+              </div>
+            </div>
+
+            {/* Tab/Mode Switcher */}
+            <div style={{
+              display: 'flex',
+              background: 'rgba(255, 255, 255, 0.02)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-color)',
+              marginBottom: '20px',
+              padding: '4px'
+            }}>
+              <button
+                type="button"
+                className="btn"
+                style={{
+                  flex: 1,
+                  padding: '8px 0',
+                  background: dayStartMode === 'denominations' ? 'var(--primary)' : 'transparent',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '13px',
+                  borderRadius: 'var(--radius-sm)'
+                }}
+                onClick={() => setDayStartMode('denominations')}
+              >
+                Denominations Counter
+              </button>
+              <button
+                type="button"
+                className="btn"
+                style={{
+                  flex: 1,
+                  padding: '8px 0',
+                  background: dayStartMode === 'direct' ? 'var(--primary)' : 'transparent',
+                  color: 'white',
+                  border: 'none',
+                  fontSize: '13px',
+                  borderRadius: 'var(--radius-sm)'
+                }}
+                onClick={() => setDayStartMode('direct')}
+              >
+                Direct Total Entry
+              </button>
+            </div>
+
+            {dayStartMode === 'denominations' ? (
+              <div>
+                <div style={{ 
+                  maxHeight: '220px', 
+                  overflowY: 'auto', 
+                  background: 'rgba(0,0,0,0.2)', 
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)', 
+                  padding: '12px',
+                  marginBottom: '16px' 
+                }}>
+                  {[5000, 2000, 1000, 500, 100, 50, 20, 10, 5].map((denom) => (
+                    <div key={denom} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '13.5px', fontFamily: 'var(--font-mono)', minWidth: '80px' }}>Rs. {denom.toLocaleString()}</span>
+                      <span style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>x</span>
+                      <input
+                        type="number"
+                        className="form-input"
+                        style={{ width: '80px', padding: '6px 10px', fontSize: '13px', textAlign: 'center', margin: '0 12px' }}
+                        min="0"
+                        placeholder="0"
+                        value={dayStartDenoms[denom] || ''}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10) || 0;
+                          setDayStartDenoms(prev => ({ ...prev, [denom]: val }));
+                        }}
+                      />
+                      <span style={{ fontSize: '13.5px', fontFamily: 'var(--font-mono)', minWidth: '100px', textAlign: 'right', color: 'var(--accent)' }}>
+                        Rs. {((dayStartDenoms[denom] || 0) * denom).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '12px 16px',
+                  background: 'rgba(16, 185, 129, 0.05)',
+                  border: '1px dashed rgba(16, 185, 129, 0.2)',
+                  borderRadius: 'var(--radius-md)',
+                  marginBottom: '20px'
+                }}>
+                  <span style={{ fontSize: '14px', fontWeight: '600' }}>Calculated Total:</span>
+                  <strong style={{ fontSize: '18px', color: 'var(--success)', fontFamily: 'var(--font-mono)' }}>
+                    Rs. {Object.entries(dayStartDenoms).reduce((sum, [denom, count]) => sum + (Number(denom) * (Number(count) || 0)), 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+                  </strong>
+                </div>
+              </div>
+            ) : (
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="form-label">Opening Cash Amount (Rs.)</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  placeholder="Enter starting cash balance directly"
+                  style={{ fontSize: '16px', fontFamily: 'var(--font-mono)', fontWeight: 'bold' }}
+                  value={dayStartDirectAmt}
+                  onChange={(e) => setDayStartDirectAmt(e.target.value)}
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+            )}
+
+            {dayStartError && (
+              <div style={{
+                background: 'var(--danger-bg)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                padding: '10px 12px',
+                borderRadius: 'var(--radius-sm)',
+                color: '#fca5a5',
+                fontSize: '12.5px',
+                marginBottom: '16px',
+                textAlign: 'center'
+              }}>
+                {dayStartError}
+              </div>
+            )}
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: '100%', padding: '12px', fontSize: '14px' }}
+              onClick={handleDayStartSubmit}
+              disabled={dayStartSubmitting}
+            >
+              {dayStartSubmitting ? 'Opening Cash Drawer...' : 'Start Day & Open Drawer'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================================
+         MODAL: ACTIVE DRAWER SESSION DETAILS
+         ============================================================================ */}
+      {showDrawerDetailsModal && drawerSession && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ width: '450px', padding: '32px' }}>
+            <h3 style={{ marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center', fontSize: '18px', fontWeight: 'bold' }}>
+              <DollarSign size={22} style={{ color: 'var(--success)' }} />
+              Active Cash Drawer Session
+            </h3>
+            <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '20px', textAlign: 'center' }}>
+              Starting details of the current cash drawer shift.
+            </p>
+
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.02)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 'var(--radius-md)',
+              padding: '16px',
+              fontSize: '13.5px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Cashier Name:</span>
+                <strong style={{ color: 'var(--text-primary)' }}>{user?.username || 'Cashier'}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>POS Terminal:</span>
+                <strong style={{ color: 'var(--text-primary)' }}>{drawerSession.TerminalID}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Opened Time:</span>
+                <strong style={{ color: 'var(--text-primary)' }}>{new Date(drawerSession.OpeningTime).toLocaleString('en-LK')}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Opening Balance:</span>
+                <strong style={{ color: 'var(--success)', fontFamily: 'var(--font-mono)' }}>
+                  Rs. {drawerSession.OpeningBalance.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+                </strong>
+              </div>
+              {drawerSession.OpeningDenominations && (
+                <div style={{ marginTop: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>
+                  <span style={{ color: 'var(--text-secondary)', display: 'block', marginBottom: '8px', fontSize: '12.5px', fontWeight: 'bold' }}>Denominations Breakdown:</span>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '12px', background: 'rgba(0,0,0,0.15)', padding: '8px 12px', borderRadius: 'var(--radius-sm)' }}>
+                    {Object.entries(JSON.parse(drawerSession.OpeningDenominations)).map(([denom, count]) => {
+                      if (Number(count) === 0) return null;
+                      return (
+                        <div key={denom} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontFamily: 'var(--font-mono)' }}>Rs. {denom} x {count}</span>
+                          <span style={{ color: 'var(--accent)' }}>Rs. {(Number(denom)*Number(count)).toLocaleString()}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '24px' }}>
+              <button className="btn btn-secondary" style={{ width: '100%' }} onClick={() => setShowDrawerDetailsModal(false)}>Close View</button>
             </div>
           </div>
         </div>

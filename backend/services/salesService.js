@@ -300,6 +300,18 @@ class SalesService {
 
     return await salesRepository.processReturn(returnRequest, companyId, userId);
   }
+
+  async getCashDrawerSessionToday(companyId, userId) {
+    return await salesRepository.getCashDrawerSessionToday(companyId, userId);
+  }
+
+  async createCashDrawerSession(companyId, userId, data) {
+    const existing = await salesRepository.getCashDrawerSessionToday(companyId, userId);
+    if (existing) {
+      throw new Error('A cash drawer session has already been started for today.');
+    }
+    return await salesRepository.createCashDrawerSession(companyId, userId, data);
+  }
 }
 
 module.exports = new SalesService();

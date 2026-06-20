@@ -114,4 +114,28 @@ router.post('/return', authenticateToken, checkPermission('RETURN_EXCHANGE_SALE'
   }
 });
 
+// GET /api/sales/cash-drawer/status
+router.get('/cash-drawer/status', authenticateToken, async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const userId = req.user.userId;
+    const session = await salesService.getCashDrawerSessionToday(companyId, userId);
+    res.json({ hasSession: !!session, session });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/sales/cash-drawer/start
+router.post('/cash-drawer/start', authenticateToken, checkPermission('ACCESS_POS'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const userId = req.user.userId;
+    const newSession = await salesService.createCashDrawerSession(companyId, userId, req.body);
+    res.status(201).json({ session: newSession, message: 'Cash drawer session started successfully.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
