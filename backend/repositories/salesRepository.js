@@ -156,10 +156,12 @@ class SalesRepository {
             allocationRequest.input('Subtotal', db.sql.Decimal(18, 2), Number((item.price * deduction).toFixed(2)));
             allocationRequest.input('BatchNo', db.sql.NVarChar(50), batch.BatchNo);
             allocationRequest.input('OriginalPrice', db.sql.Decimal(18, 2), getOriginalPrice(item));
+            allocationRequest.input('VariantID', db.sql.Int, item.variantId || null);
+            allocationRequest.input('VariantName', db.sql.NVarChar(100), item.variantName || null);
 
             await allocationRequest.query(`
-              INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, BatchNo, OriginalPrice)
-              VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, @BatchNo, @OriginalPrice)
+              INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, BatchNo, OriginalPrice, VariantID, VariantName)
+              VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, @BatchNo, @OriginalPrice, @VariantID, @VariantName)
             `);
 
             remainingQty -= deduction;
@@ -175,10 +177,12 @@ class SalesRepository {
             fallbackItemReq.input('Quantity', db.sql.Decimal(18, 3), remainingQty);
             fallbackItemReq.input('Subtotal', db.sql.Decimal(18, 2), Number((item.price * remainingQty).toFixed(2)));
             fallbackItemReq.input('OriginalPrice', db.sql.Decimal(18, 2), getOriginalPrice(item));
+            fallbackItemReq.input('VariantID', db.sql.Int, item.variantId || null);
+            fallbackItemReq.input('VariantName', db.sql.NVarChar(100), item.variantName || null);
 
             await fallbackItemReq.query(`
-              INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, BatchNo, OriginalPrice)
-              VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, NULL, @OriginalPrice)
+              INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, BatchNo, OriginalPrice, VariantID, VariantName)
+              VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, NULL, @OriginalPrice, @VariantID, @VariantName)
             `);
           }
 
@@ -199,10 +203,12 @@ class SalesRepository {
           itemRequest.input('Quantity', db.sql.Decimal(18, 3), item.quantity);
           itemRequest.input('Subtotal', db.sql.Decimal(18, 2), item.subtotal);
           itemRequest.input('OriginalPrice', db.sql.Decimal(18, 2), getOriginalPrice(item));
+          itemRequest.input('VariantID', db.sql.Int, item.variantId || null);
+          itemRequest.input('VariantName', db.sql.NVarChar(100), item.variantName || null);
 
           await itemRequest.query(`
-            INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, BatchNo, OriginalPrice)
-            VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, NULL, @OriginalPrice)
+            INSERT INTO dbo.OrderItems (OrderID, ProductID, Price, Cost, Quantity, Subtotal, BatchNo, OriginalPrice, VariantID, VariantName)
+            VALUES (@OrderID, @ProductID, @Price, @Cost, @Quantity, @Subtotal, NULL, @OriginalPrice, @VariantID, @VariantName)
           `);
 
           const stockRequest = new db.sql.Request(transaction);

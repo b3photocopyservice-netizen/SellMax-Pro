@@ -123,6 +123,37 @@ poolPromise.then(async (pool) => {
           PRINT 'Created table dbo.CashDrawerSessions.';
       END
     `);
+
+    // Create ProductVariants table if not exists
+    await pool.request().query(`
+      IF OBJECT_ID('dbo.ProductVariants', 'U') IS NULL
+      BEGIN
+          CREATE TABLE dbo.ProductVariants (
+              VariantID   INT IDENTITY(1,1) PRIMARY KEY,
+              ProductID   INT NOT NULL,
+              CompanyID   INT NOT NULL,
+              VariantName NVARCHAR(100) NOT NULL,
+              Price       DECIMAL(18,2) NOT NULL,
+              Barcode     NVARCHAR(50)  NULL,
+              IsActive    BIT NOT NULL DEFAULT 1,
+              CreatedAt   DATETIME NOT NULL DEFAULT GETDATE(),
+              CONSTRAINT FK_ProductVariants_Product FOREIGN KEY (ProductID) REFERENCES dbo.Products(ProductID) ON DELETE CASCADE,
+              CONSTRAINT FK_ProductVariants_Company FOREIGN KEY (CompanyID) REFERENCES dbo.Companies(CompanyID),
+              CONSTRAINT UQ_Variant_Name_Product UNIQUE (ProductID, CompanyID, VariantName)
+          );
+          PRINT 'Created table dbo.ProductVariants.';
+      END
+    `);
+
+    // Add VariantID column to OrderItems if not exists
+    await pool.request().query(`
+      IF COL_LENGTH('dbo.OrderItems', 'VariantID') IS NULL
+      BEGIN
+          ALTER TABLE dbo.OrderItems ADD VariantID INT NULL;
+          ALTER TABLE dbo.OrderItems ADD VariantName NVARCHAR(100) NULL;
+          PRINT 'Added VariantID and VariantName columns to OrderItems.';
+      END
+    `);
     
     console.log('Database migrations completed successfully.');
   } catch (migErr) {

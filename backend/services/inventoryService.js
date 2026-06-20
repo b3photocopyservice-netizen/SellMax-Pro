@@ -143,6 +143,64 @@ class InventoryService {
   async markAllAsRead(companyId) {
     return await notificationService.markAllAsRead(companyId);
   }
+
+  // ── Price Variants ────────────────────────────────────────────────────────
+
+  async getVariantsByProduct(productId, companyId) {
+    return await productRepository.getVariantsByProduct(productId, companyId);
+  }
+
+  async getAllVariantsForCompany(companyId) {
+    return await productRepository.getAllVariantsForCompany(companyId);
+  }
+
+  async createVariant(productId, data, companyId) {
+    if (!data.variantName || data.variantName.trim() === '') {
+      throw new Error('Variant name cannot be empty.');
+    }
+    if (isNaN(parseFloat(data.price)) || parseFloat(data.price) <= 0) {
+      throw new Error('Variant price must be greater than zero.');
+    }
+    // Unique name within the same product
+    const existing = await productRepository.getVariantsByProduct(productId, companyId);
+    const duplicate = existing.find(v => v.VariantName.toLowerCase() === data.variantName.trim().toLowerCase());
+    if (duplicate) {
+      throw new Error(`A variant named '${data.variantName.trim()}' already exists for this product.`);
+    }
+    // Barcode must be unique across the whole company's variants
+    if (data.barcode && data.barcode.trim()) {
+      const barcodeConflict = await productRepository.getVariantByBarcode(data.barcode.trim(), companyId);
+      if (barcodeConflict) {
+        throw new Error(`Barcode '${data.barcode.trim()}' is already assigned to variant '${barcodeConflict.VariantName}' of product '${barcodeConflict.ProductName}'.`);
+      }
+    }
+    return await productRepository.createVariant({ ...data, productId, price: parseFloat(data.price) }, companyId);
+  }
+
+  async updateVariant(variantId, data, companyId) {
+    if (!data.variantName || data.variantName.trim() === '') {
+      throw new Error('Variant name cannot be empty.');
+    }
+    if (isNaN(parseFloat(data.price)) || parseFloat(data.price) <= 0) {
+      throw new Error('Variant price must be greater than zero.');
+    }
+    // Barcode uniqueness — skip self
+    if (data.barcode && data.barcode.trim()) {
+      const barcodeConflict = await productRepository.getVariantByBarcode(data.barcode.trim(), companyId);
+      if (barcodeConflict && barcodeConflict.VariantID !== parseInt(variantId, 10)) {
+        throw new Error(`Barcode '${data.barcode.trim()}' is already in use by another variant.`);
+      }
+    }
+    const updated = await productRepository.updateVariant(variantId, { ...data, price: parseFloat(data.price) }, companyId);
+    if (!updated) throw new Error('Variant not found.');
+    return updated;
+  }
+
+  async deleteVariant(variantId, companyId) {
+    const success = await productRepository.deleteVariant(variantId, companyId);
+    if (!success) throw new Error('Variant not found or could not be deleted.');
+    return success;
+  }
 }
 
 module.exports = new InventoryService();

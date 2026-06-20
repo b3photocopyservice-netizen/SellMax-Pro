@@ -141,6 +141,11 @@ export default function Register({ setToast }) {
   const [dayStartSubmitting, setDayStartSubmitting] = useState(false);
   const [dayStartError, setDayStartError] = useState('');
 
+  // Price Variants State
+  const [variantsByProduct, setVariantsByProduct] = useState({}); // { productId: [variant,...] }
+  const [showVariantPicker, setShowVariantPicker] = useState(false);
+  const [variantPickerProduct, setVariantPickerProduct] = useState(null);
+
   const getCompanyLogoUrl = (url) => {
     if (!url) return null;
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
@@ -232,7 +237,7 @@ export default function Register({ setToast }) {
   // Permanent focus: keep cursor on barcode input at all times
   // Suspended while any modal/overlay is open so they remain interactive
   const anyModalOpen = showDayStartModal || showCheckoutModal || showReceiptModal
-    || showHeldDrawer || showOverrideModal || showDrawerDetailsModal;
+    || showHeldDrawer || showOverrideModal || showDrawerDetailsModal || showVariantPicker;
   usePermanentFocus(barcodeInputRef, !anyModalOpen);
 
   const checkDrawerStatus = async () => {
@@ -304,11 +309,12 @@ export default function Register({ setToast }) {
 
   const fetchProducts = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/inventory/products`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
+      const [prodRes, varRes] = await Promise.all([
+        fetch(`${API_URL}/api/inventory/products`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/inventory/variants`, { headers: { 'Authorization': `Bearer ${token}` } })
+      ]);
+      if (prodRes.ok) {
+        const data = await prodRes.json();
         setProducts(data);
         // Pre-fetch batches for batch-tracked products
         const batchTracked = data.filter(p => p.IsBatchTracked);
@@ -322,6 +328,16 @@ export default function Register({ setToast }) {
           } catch (_) {}
         }));
         setProductBatches(batchMap);
+      }
+      if (varRes.ok) {
+        const allVariants = await varRes.json();
+        // Build map: { productId: [variant, ...] }
+        const vMap = {};
+        for (const v of allVariants) {
+          if (!vMap[v.ProductID]) vMap[v.ProductID] = [];
+          vMap[v.ProductID].push(v);
+        }
+        setVariantsByProduct(vMap);
       }
     } catch (err) {
       console.error('Failed to load products:', err);
@@ -534,6 +550,24 @@ export default function Register({ setToast }) {
     const query = searchQuery.trim();
     if (!query) return;
 
+    // 1. Check if barcode matches a specific variant's barcode
+    for (const [productId, vars] of Object.entries(variantsByProduct)) {
+      const matchedVariant = vars.find(v => v.Barcode === query && v.IsActive);
+      if (matchedVariant) {
+        const product = products.find(p => p.ProductID === matchedVariant.ProductID);
+        if (product && product.IsActive !== false && product.IsActive !== 0) {
+          const { blocked, warning } = checkExpiryForProduct(product);
+          if (blocked) { setToast({ type: 'error', message: warning }); setSearchQuery(''); return; }
+          // Show picker for this product (cashier must always confirm variant)
+          setVariantPickerProduct(product);
+          setShowVariantPicker(true);
+          setSearchQuery('');
+          return;
+        }
+      }
+    }
+
+    // 2. Check if barcode/SKU matches a product
     const matched = products.find(p => p.Barcode === query || p.SKU.toLowerCase() === query.toLowerCase());
     if (matched) {
       if (matched.IsActive === false || matched.IsActive === 0) {
@@ -544,6 +578,14 @@ export default function Register({ setToast }) {
       const { blocked, warning } = checkExpiryForProduct(matched);
       if (blocked) {
         setToast({ type: 'error', message: warning });
+        setSearchQuery('');
+        return;
+      }
+      // Show picker if product has variants, else add directly
+      const productVariants = variantsByProduct[matched.ProductID]?.filter(v => v.IsActive) || [];
+      if (productVariants.length > 0) {
+        setVariantPickerProduct(matched);
+        setShowVariantPicker(true);
         setSearchQuery('');
         return;
       }
@@ -585,9 +627,36 @@ export default function Register({ setToast }) {
       setToast({ type: 'error', message: warning });
       return;
     }
+    // Always show variant picker when the product has variants
+    const productVariants = variantsByProduct[product.ProductID]?.filter(v => v.IsActive) || [];
+    if (productVariants.length > 0) {
+      setVariantPickerProduct(product);
+      setShowVariantPicker(true);
+      return;
+    }
+    // No variants — add directly using the product base price
     try {
       addToCart(product);
       if (warning) setToast({ type: 'warning', message: `⚠ ${warning}` });
+    } catch (err) {
+      setToast({ type: 'error', message: err.message });
+    }
+  };
+
+  /** Add a product to cart using a specific price variant */
+  const addVariantToCart = (product, variant) => {
+    const { warning } = checkExpiryForProduct(product);
+    try {
+      addToCart({
+        ...product,
+        Price: variant.Price,
+        variantId: variant.VariantID,
+        variantName: variant.VariantName,
+      });
+      setShowVariantPicker(false);
+      setVariantPickerProduct(null);
+      if (warning) setToast({ type: 'warning', message: `⚠ ${warning}` });
+      else setToast({ type: 'success', message: `Added '${product.Name}' (${variant.VariantName}) — Rs. ${Number(variant.Price).toFixed(2)}` });
     } catch (err) {
       setToast({ type: 'error', message: err.message });
     }
@@ -824,10 +893,14 @@ export default function Register({ setToast }) {
       const origHtml = hasOverride 
         ? `<div style="font-size: 9px; color: #d97706;">Orig: <span style="text-decoration: line-through;">Rs. ${Number(item.OriginalPrice).toFixed(2)}</span></div>` 
         : '';
+      const variantHtml = item.VariantName
+        ? `<div style="font-size: 9px; color: #6366f1; font-weight: 600;">${item.VariantName}</div>`
+        : '';
       return `
         <tr>
           <td>
             <div>${item.ProductName}</div>
+            ${variantHtml}
             ${origHtml}
           </td>
           <td style="text-align:center">${Number(item.Quantity)} ${item.UOM || 'pcs'}</td>
@@ -1244,7 +1317,17 @@ export default function Register({ setToast }) {
               return (
                 <div key={item.productId} className="cart-item">
                   <div className="cart-item-details">
-                    <div className="cart-item-name">{item.name}</div>
+                    <div className="cart-item-name">
+                      {item.name}
+                      {item.variantName && (
+                        <span style={{
+                          marginLeft: '6px', fontSize: '10px', fontWeight: '700',
+                          background: 'rgba(139,92,246,0.18)', color: 'var(--primary)',
+                          border: '1px solid rgba(139,92,246,0.3)',
+                          padding: '1px 7px', borderRadius: '10px', verticalAlign: 'middle'
+                        }}>{item.variantName}</span>
+                      )}
+                    </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                       {item.originalPrice && Number(item.originalPrice) !== Number(item.price) ? (
                         <>
@@ -2372,6 +2455,81 @@ export default function Register({ setToast }) {
           </div>
         </div>
       )}
+
+      {/* ============================================================
+         MODAL: PRICE VARIANT PICKER
+         ============================================================ */}
+      {showVariantPicker && variantPickerProduct && (() => {
+        const activeVariants = (variantsByProduct[variantPickerProduct.ProductID] || []).filter(v => v.IsActive);
+        return (
+          <div className="modal-overlay" onClick={() => { setShowVariantPicker(false); setVariantPickerProduct(null); }}>
+            <div className="modal-content" style={{ width: '480px', maxWidth: '95vw' }} onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <h3 style={{ fontSize: '16px', fontWeight: '700', margin: 0 }}>Select Price Variant</h3>
+                    <p style={{ fontSize: '12px', color: 'var(--text-secondary)', margin: '4px 0 0' }}>
+                      {variantPickerProduct.Name}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => { setShowVariantPicker(false); setVariantPickerProduct(null); }}
+                    style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '18px', lineHeight: 1, padding: '4px' }}
+                  >✕</button>
+                </div>
+                <div style={{ height: '2px', background: 'linear-gradient(90deg, var(--primary), transparent)', borderRadius: '2px', marginTop: '12px' }} />
+              </div>
+
+              {/* Variant list */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '60vh', overflowY: 'auto', paddingRight: '4px' }}>
+                {activeVariants.map(v => (
+                  <button
+                    key={v.VariantID}
+                    data-no-refocus
+                    onClick={() => addVariantToCart(variantPickerProduct, v)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '14px 18px', borderRadius: 'var(--radius-md)',
+                      background: 'rgba(255,255,255,0.04)',
+                      border: '1px solid var(--border-color)',
+                      cursor: 'pointer', transition: 'all 0.18s ease',
+                      textAlign: 'left', width: '100%'
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,92,246,0.12)'; e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'var(--border-color)'; e.currentTarget.style.transform = 'translateY(0)'; }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      <span style={{ fontWeight: '700', fontSize: '15px', color: 'white' }}>{v.VariantName}</span>
+                      {v.Barcode && (
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                          Barcode: {v.Barcode}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--accent)', fontFamily: 'monospace' }}>
+                        Rs. {Number(v.Price).toFixed(2)}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Cancel */}
+              <div style={{ marginTop: '16px', display: 'flex', justifyContent: 'center' }}>
+                <button
+                  className="btn btn-secondary"
+                  style={{ width: '100%', padding: '10px', fontSize: '13px' }}
+                  onClick={() => { setShowVariantPicker(false); setVariantPickerProduct(null); }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
     </div>
   );

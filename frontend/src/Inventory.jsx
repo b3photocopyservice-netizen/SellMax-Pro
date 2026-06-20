@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import formatCurrency from './utils/formatCurrency';
 import { useAuth } from './contexts/AuthContext';
-import { Search, Plus, Edit2, Trash2, Tag, RefreshCw, AlertTriangle, Ruler, Award, Calendar, Boxes, Clock } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Tag, RefreshCw, AlertTriangle, Ruler, Award, Calendar, Boxes, Clock, DollarSign, Check, X } from 'lucide-react';
 
 export default function Inventory({ setToast }) {
   const { token, API_URL, hasPermission } = useAuth();
@@ -33,6 +33,14 @@ export default function Inventory({ setToast }) {
   const [batches, setBatches] = useState([]);
   const [batchForm, setBatchForm] = useState({ batchNo: '', mfgDate: '', expiryDate: '', quantity: '', warehouseName: '' });
 
+  // Price Variants state
+  const [productModalTab, setProductModalTab] = useState('details'); // 'details' | 'variants'
+  const [variants, setVariants] = useState([]);
+  const [variantsLoading, setVariantsLoading] = useState(false);
+  const [variantForm, setVariantForm] = useState({ variantName: '', price: '', barcode: '', isActive: true });
+  const [editingVariantId, setEditingVariantId] = useState(null);
+  const [editingVariantForm, setEditingVariantForm] = useState({});
+
   // Form states
   const [activeProductId, setActiveProductId] = useState(null);
   const [productForm, setProductForm] = useState({
@@ -57,6 +65,7 @@ export default function Inventory({ setToast }) {
         if (showCategoryModal) setShowCategoryModal(false);
         if (showUomModal) setShowUomModal(false);
         if (showBrandModal) setShowBrandModal(false);
+        setEditingVariantId(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -114,6 +123,65 @@ export default function Inventory({ setToast }) {
       });
       if (res.ok) setBatches(await res.json());
     } catch (err) { console.error('Failed to fetch batches:', err); }
+  };
+
+  const fetchVariants = async (productId) => {
+    try {
+      setVariantsLoading(true);
+      const res = await fetch(`${API_URL}/api/inventory/products/${productId}/variants`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) setVariants(await res.json());
+    } catch (err) { console.error('Failed to fetch variants:', err); }
+    finally { setVariantsLoading(false); }
+  };
+
+  const handleAddVariant = async (e) => {
+    e.preventDefault();
+    if (!canManage) return;
+    try {
+      const res = await fetch(`${API_URL}/api/inventory/products/${activeProductId}/variants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(variantForm)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to add variant.');
+      setToast({ type: 'success', message: `Variant '${variantForm.variantName}' added.` });
+      setVariantForm({ variantName: '', price: '', barcode: '', isActive: true });
+      fetchVariants(activeProductId);
+    } catch (err) { setToast({ type: 'error', message: err.message }); }
+  };
+
+  const handleSaveVariantEdit = async (variantId) => {
+    if (!canManage) return;
+    try {
+      const res = await fetch(`${API_URL}/api/inventory/variants/${variantId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(editingVariantForm)
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to update variant.');
+      setToast({ type: 'success', message: 'Variant updated.' });
+      setEditingVariantId(null);
+      fetchVariants(activeProductId);
+    } catch (err) { setToast({ type: 'error', message: err.message }); }
+  };
+
+  const handleDeleteVariant = async (variantId, variantName) => {
+    if (!canManage) return;
+    if (!window.confirm(`Delete variant '${variantName}'? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`${API_URL}/api/inventory/variants/${variantId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete variant.');
+      setToast({ type: 'success', message: `Variant '${variantName}' deleted.` });
+      fetchVariants(activeProductId);
+    } catch (err) { setToast({ type: 'error', message: err.message }); }
   };
 
   const handleOpenBatchPanel = (product) => {
@@ -253,6 +321,11 @@ export default function Inventory({ setToast }) {
       blockExpiredSales: product.BlockExpiredSales !== undefined ? !!product.BlockExpiredSales : true,
       stockIssuingMethod: product.StockIssuingMethod || 'FEFO'
     });
+    setProductModalTab('details');
+    setVariants([]);
+    setVariantForm({ variantName: '', price: '', barcode: '', isActive: true });
+    setEditingVariantId(null);
+    fetchVariants(product.ProductID);
     setShowProductModal(true);
   };
 
@@ -263,6 +336,10 @@ export default function Inventory({ setToast }) {
       minDiscountAmt: '0', minDiscountPct: '0', maxDiscountAmt: '0', maxDiscountPct: '0', minProfitMargin: '0',
       isActive: true, isBatchTracked: false, blockExpiredSales: true, stockIssuingMethod: 'FEFO'
     });
+    setProductModalTab('details');
+    setVariants([]);
+    setVariantForm({ variantName: '', price: '', barcode: '', isActive: true });
+    setEditingVariantId(null);
     setShowProductModal(true);
   };
 
@@ -1148,6 +1225,155 @@ export default function Inventory({ setToast }) {
                 <button type="submit" className="btn btn-primary" style={{ padding: '8px 16px', fontSize: '13px' }}>{modalMode === 'add' ? 'Save Product' : 'Apply Updates'}</button>
               </div>
             </form>
+
+            {/* ── Price Variants Tab (edit mode only) ── */}
+            {modalMode === 'edit' && (
+              <div style={{ marginTop: '20px', borderTop: '2px solid var(--border-color)', paddingTop: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <h4 style={{ fontSize: '14px', fontWeight: '700', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                    <DollarSign size={15} /> Price Variants
+                  </h4>
+                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                    {variants.length} variant{variants.length !== 1 ? 's' : ''} configured
+                  </span>
+                </div>
+
+                {/* Existing variants table */}
+                {variantsLoading ? (
+                  <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-secondary)', fontSize: '13px' }}>Loading variants…</div>
+                ) : (
+                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', overflow: 'hidden', marginBottom: '12px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                      <thead>
+                        <tr style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid var(--border-color)' }}>
+                          <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: '600', fontSize: '11px', color: 'var(--text-secondary)' }}>VARIANT NAME</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: '600', fontSize: '11px', color: 'var(--text-secondary)' }}>BARCODE</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600', fontSize: '11px', color: 'var(--text-secondary)' }}>PRICE (Rs.)</th>
+                          <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: '600', fontSize: '11px', color: 'var(--text-secondary)' }}>STATUS</th>
+                          {canManage && <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '600', fontSize: '11px', color: 'var(--text-secondary)' }}>ACTIONS</th>}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {variants.length === 0 ? (
+                          <tr>
+                            <td colSpan={canManage ? 5 : 4} style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)', fontSize: '12px' }}>
+                              No variants yet. Add one below to enable price-tier selection at the POS.
+                            </td>
+                          </tr>
+                        ) : variants.map(v => (
+                          <tr key={v.VariantID} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                            {editingVariantId === v.VariantID ? (
+                              /* ── inline edit row ── */
+                              <>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <input className="form-input" style={{ fontSize: '12px', padding: '4px 8px' }}
+                                    value={editingVariantForm.variantName}
+                                    onChange={e => setEditingVariantForm(f => ({ ...f, variantName: e.target.value }))} />
+                                </td>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <input className="form-input mono" style={{ fontSize: '12px', padding: '4px 8px' }}
+                                    placeholder="Barcode"
+                                    value={editingVariantForm.barcode}
+                                    onChange={e => setEditingVariantForm(f => ({ ...f, barcode: e.target.value }))} />
+                                </td>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <input className="form-input mono" type="number" step="0.01" style={{ fontSize: '12px', padding: '4px 8px', textAlign: 'right' }}
+                                    value={editingVariantForm.price}
+                                    onChange={e => setEditingVariantForm(f => ({ ...f, price: e.target.value }))} />
+                                </td>
+                                <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                                  <button type="button" onClick={() => setEditingVariantForm(f => ({ ...f, isActive: !f.isActive }))}
+                                    style={{ padding: '3px 10px', fontSize: '11px', fontWeight: '600', borderRadius: '10px', border: 'none', cursor: 'pointer',
+                                      background: editingVariantForm.isActive ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
+                                      color: editingVariantForm.isActive ? 'var(--success)' : 'var(--danger)' }}>
+                                    {editingVariantForm.isActive ? 'Active' : 'Inactive'}
+                                  </button>
+                                </td>
+                                <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                    <button type="button" className="btn btn-primary btn-icon" style={{ width: '28px', height: '28px' }} onClick={() => handleSaveVariantEdit(v.VariantID)} title="Save"><Check size={12} /></button>
+                                    <button type="button" className="btn btn-secondary btn-icon" style={{ width: '28px', height: '28px' }} onClick={() => setEditingVariantId(null)} title="Cancel"><X size={12} /></button>
+                                  </div>
+                                </td>
+                              </>
+                            ) : (
+                              /* ── read-only row ── */
+                              <>
+                                <td style={{ padding: '8px 12px', fontWeight: '600' }}>{v.VariantName}</td>
+                                <td style={{ padding: '8px 12px', fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-secondary)' }}>{v.Barcode || '—'}</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: '700', fontFamily: 'monospace', color: 'var(--accent)' }}>Rs. {Number(v.Price).toFixed(2)}</td>
+                                <td style={{ padding: '8px 12px', textAlign: 'center' }}>
+                                  <span style={{ padding: '3px 10px', fontSize: '11px', fontWeight: '600', borderRadius: '10px',
+                                    background: v.IsActive ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                                    color: v.IsActive ? 'var(--success)' : 'var(--danger)' }}>
+                                    {v.IsActive ? 'Active' : 'Inactive'}
+                                  </span>
+                                </td>
+                                {canManage && (
+                                  <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                      <button type="button" className="btn btn-secondary btn-icon" style={{ width: '28px', height: '28px' }}
+                                        onClick={() => { setEditingVariantId(v.VariantID); setEditingVariantForm({ variantName: v.VariantName, price: v.Price, barcode: v.Barcode || '', isActive: !!v.IsActive }); }}
+                                        title="Edit"><Edit2 size={12} /></button>
+                                      <button type="button" className="btn btn-danger btn-icon" style={{ width: '28px', height: '28px' }}
+                                        onClick={() => handleDeleteVariant(v.VariantID, v.VariantName)} title="Delete"><Trash2 size={12} /></button>
+                                    </div>
+                                  </td>
+                                )}
+                              </>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Add new variant form */}
+                {canManage && (
+                  <form onSubmit={handleAddVariant} style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 1fr auto auto', gap: '8px', alignItems: 'end' }}>
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>VARIANT NAME</label>
+                      <input className="form-input" style={{ fontSize: '12px' }}
+                        placeholder="e.g. Retail, Wholesale…"
+                        value={variantForm.variantName}
+                        onChange={e => setVariantForm(f => ({ ...f, variantName: e.target.value }))}
+                        required />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>BARCODE</label>
+                      <input className="form-input mono" style={{ fontSize: '12px' }}
+                        placeholder="Scan or type…"
+                        value={variantForm.barcode}
+                        onChange={e => setVariantForm(f => ({ ...f, barcode: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>PRICE (Rs.)</label>
+                      <input className="form-input mono" type="number" step="0.01" style={{ fontSize: '12px' }}
+                        placeholder="0.00"
+                        value={variantForm.price}
+                        onChange={e => setVariantForm(f => ({ ...f, price: e.target.value }))}
+                        required />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '10px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontWeight: '600' }}>STATUS</label>
+                      <button type="button"
+                        onClick={() => setVariantForm(f => ({ ...f, isActive: !f.isActive }))}
+                        style={{ padding: '7px 12px', fontSize: '12px', fontWeight: '600', borderRadius: 'var(--radius-md)', border: 'none', cursor: 'pointer',
+                          background: variantForm.isActive ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
+                          color: variantForm.isActive ? 'var(--success)' : 'var(--danger)', whiteSpace: 'nowrap' }}>
+                        {variantForm.isActive ? 'Active' : 'Inactive'}
+                      </button>
+                    </div>
+                    <div style={{ paddingBottom: '1px' }}>
+                      <button type="submit" className="btn btn-primary" style={{ padding: '7px 14px', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                        <Plus size={13} /> Add Variant
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

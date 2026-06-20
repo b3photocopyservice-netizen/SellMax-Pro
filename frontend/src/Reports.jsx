@@ -279,10 +279,14 @@ export default function Reports({ setToast }) {
       const origHtml = hasOverride 
         ? `<div style="font-size: 9px; color: #d97706;">Orig: <span style="text-decoration: line-through;">Rs. ${Number(item.OriginalPrice).toFixed(2)}</span></div>` 
         : '';
+      const variantHtml = item.VariantName
+        ? `<div style="font-size: 9px; color: #6366f1; font-weight: 600;">${item.VariantName}</div>`
+        : '';
       return `
         <tr>
           <td>
             <div>${item.ProductName}</div>
+            ${variantHtml}
             ${origHtml}
           </td>
           <td style="text-align:center">${Number(item.Quantity)} ${item.UOM || 'pcs'}</td>

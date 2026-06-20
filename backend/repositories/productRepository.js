@@ -297,6 +297,90 @@ class ProductRepository {
     `;
     await db.query(sqlQuery, { ProductID: productId, CompanyID: companyId });
   }
+
+  // ── Product Variants ──────────────────────────────────────────────────────
+
+  async getVariantsByProduct(productId, companyId) {
+    const result = await db.query(
+      `SELECT * FROM dbo.ProductVariants
+       WHERE ProductID = @ProductID AND CompanyID = @CompanyID
+       ORDER BY VariantName ASC`,
+      { ProductID: productId, CompanyID: companyId }
+    );
+    return result.recordset;
+  }
+
+  /** Batch-fetch all variants for a company (used by POS on load) */
+  async getAllVariantsForCompany(companyId) {
+    const result = await db.query(
+      `SELECT * FROM dbo.ProductVariants
+       WHERE CompanyID = @CompanyID AND IsActive = 1
+       ORDER BY ProductID, VariantName ASC`,
+      { CompanyID: companyId }
+    );
+    return result.recordset;
+  }
+
+  /** Find variant by barcode (for barcode-scan direct resolution) */
+  async getVariantByBarcode(barcode, companyId) {
+    const result = await db.query(
+      `SELECT pv.*, p.Name AS ProductName, p.SKU, p.Stock, p.UOM, p.AllowFraction,
+              p.Cost, p.IsBatchTracked, p.CategoryID, p.ImageURL
+       FROM dbo.ProductVariants pv
+       INNER JOIN dbo.Products p ON pv.ProductID = p.ProductID
+       WHERE pv.Barcode = @Barcode AND pv.CompanyID = @CompanyID AND pv.IsActive = 1 AND p.IsActive = 1`,
+      { Barcode: barcode, CompanyID: companyId }
+    );
+    return result.recordset[0] || null;
+  }
+
+  async createVariant(data, companyId) {
+    const result = await db.query(
+      `INSERT INTO dbo.ProductVariants (ProductID, CompanyID, VariantName, Price, Barcode, IsActive)
+       OUTPUT inserted.*
+       VALUES (@ProductID, @CompanyID, @VariantName, @Price, @Barcode, @IsActive)`,
+      {
+        ProductID: data.productId,
+        CompanyID: companyId,
+        VariantName: data.variantName.trim(),
+        Price: data.price,
+        Barcode: data.barcode || null,
+        IsActive: data.isActive !== undefined ? (data.isActive ? 1 : 0) : 1
+      }
+    );
+    return result.recordset[0];
+  }
+
+  async updateVariant(variantId, data, companyId) {
+    const result = await db.query(
+      `UPDATE dbo.ProductVariants
+       SET VariantName = @VariantName,
+           Price       = @Price,
+           Barcode     = @Barcode,
+           IsActive    = @IsActive
+       OUTPUT inserted.*
+       WHERE VariantID = @VariantID AND CompanyID = @CompanyID`,
+      {
+        VariantID: variantId,
+        CompanyID: companyId,
+        VariantName: data.variantName.trim(),
+        Price: data.price,
+        Barcode: data.barcode || null,
+        IsActive: data.isActive !== undefined ? (data.isActive ? 1 : 0) : 1
+      }
+    );
+    return result.recordset[0] || null;
+  }
+
+  async deleteVariant(variantId, companyId) {
+    const result = await db.query(
+      `DELETE FROM dbo.ProductVariants
+       OUTPUT deleted.VariantID
+       WHERE VariantID = @VariantID AND CompanyID = @CompanyID`,
+      { VariantID: variantId, CompanyID: companyId }
+    );
+    return result.recordset.length > 0;
+  }
 }
 
 module.exports = new ProductRepository();

@@ -257,4 +257,56 @@ router.post('/notifications/read', authenticateToken, async (req, res, next) => 
   }
 });
 
+// ── Price Variants ────────────────────────────────────────────────────────────
+
+// GET /api/inventory/products/:id/variants
+router.get('/products/:id/variants', authenticateToken, canViewInventory, async (req, res, next) => {
+  try {
+    const variants = await inventoryService.getVariantsByProduct(req.params.id, req.user.companyId);
+    res.json(variants);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/inventory/variants  — batch fetch all active variants for POS
+router.get('/variants', authenticateToken, canViewInventory, async (req, res, next) => {
+  try {
+    const variants = await inventoryService.getAllVariantsForCompany(req.user.companyId);
+    res.json(variants);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/inventory/products/:id/variants
+router.post('/products/:id/variants', authenticateToken, checkPermission('MANAGE_INVENTORY'), async (req, res, next) => {
+  try {
+    const created = await inventoryService.createVariant(req.params.id, req.body, req.user.companyId);
+    res.status(201).json(created);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/inventory/variants/:variantId
+router.put('/variants/:variantId', authenticateToken, checkPermission('MANAGE_INVENTORY'), async (req, res, next) => {
+  try {
+    const updated = await inventoryService.updateVariant(req.params.variantId, req.body, req.user.companyId);
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/inventory/variants/:variantId
+router.delete('/variants/:variantId', authenticateToken, checkPermission('MANAGE_INVENTORY'), async (req, res, next) => {
+  try {
+    await inventoryService.deleteVariant(req.params.variantId, req.user.companyId);
+    res.json({ message: 'Variant deleted successfully.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
