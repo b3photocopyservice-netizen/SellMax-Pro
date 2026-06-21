@@ -1,6 +1,7 @@
 const salesRepository = require('../repositories/salesRepository');
 const productRepository = require('../repositories/productRepository');
 const customerRepository = require('../repositories/customerRepository');
+const companyRepository = require('../repositories/companyRepository');
 const authService = require('./authService');
 
 class SalesService {
@@ -20,6 +21,9 @@ class SalesService {
       throw new Error('Cannot process checkout. Cart is empty.');
     }
 
+    const company = await companyRepository.getCompanyById(companyId);
+    const allowNegativeStock = company && (company.AllowNegativeStock === 1 || company.AllowNegativeStock === true);
+
     // 2. Validation: Check product stock levels & fetch limits
     for (const item of saleData.items) {
       const product = await productRepository.getById(item.productId, companyId);
@@ -29,7 +33,7 @@ class SalesService {
       if (product.IsActive === false || product.IsActive === 0) {
         throw new Error(`Product '${product.Name}' is inactive and cannot be sold.`);
       }
-      if (product.Stock < item.quantity) {
+      if (!allowNegativeStock && product.Stock < item.quantity) {
         throw new Error(`Insufficient stock for '${product.Name}'. Available: ${product.Stock}, Requested: ${item.quantity}`);
       }
       

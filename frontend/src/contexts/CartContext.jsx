@@ -10,6 +10,7 @@ export const CartProvider = ({ children }) => {
   const [discountAmount, setDiscountAmount] = useState(0);
   const [taxRate, setTaxRate] = useState(0.10); // default 10%
   const [taxActive, setTaxActive] = useState(true);
+  const [allowNegativeStock, setAllowNegativeStock] = useState(false);
 
   // Fetch company tax configuration on mount
   useEffect(() => {
@@ -23,8 +24,9 @@ export const CartProvider = ({ children }) => {
           const percentage = data.TaxPercentage !== undefined ? Number(data.TaxPercentage) : 10;
           setTaxRate(percentage / 100);
           setTaxActive(data.IsTaxActive !== undefined ? !!data.IsTaxActive : true);
+          setAllowNegativeStock(data.AllowNegativeStock !== undefined ? !!data.AllowNegativeStock : false);
         } else {
-          console.warn('Failed to fetch tax config, using defaults.');
+          console.warn('Failed to fetch tax/inventory config, using defaults.');
         }
       } catch (err) {
         console.error('Error fetching tax config:', err);
@@ -37,7 +39,7 @@ export const CartProvider = ({ children }) => {
     setCartItems((prevItems) => {
       const existing = prevItems.find((item) => item.productId === product.ProductID);
       if (existing) {
-        if (existing.quantity >= product.Stock) {
+        if (!allowNegativeStock && existing.quantity >= product.Stock) {
           throw new Error(`Cannot add more. Only ${product.Stock} ${product.UOM || 'pcs'} of '${product.Name}' are in stock.`);
         }
         return prevItems.map((item) =>
@@ -46,7 +48,7 @@ export const CartProvider = ({ children }) => {
             : item
         );
       } else {
-        if (product.Stock <= 0) {
+        if (!allowNegativeStock && product.Stock <= 0) {
           throw new Error(`'${product.Name}' is out of stock.`);
         }
         return [
@@ -76,7 +78,7 @@ export const CartProvider = ({ children }) => {
       removeFromCart(productId);
       return;
     }
-    if (quantity > maxStock) {
+    if (!allowNegativeStock && quantity > maxStock) {
       throw new Error(`Cannot adjust quantity to ${quantity}. Only ${maxStock} are in stock.`);
     }
     setCartItems((prevItems) =>
@@ -237,7 +239,8 @@ export const CartProvider = ({ children }) => {
       clearCart,
       checkout,
       holdSale,
-      resumeSale
+      resumeSale,
+      allowNegativeStock
     }}>
       {children}
     </CartContext.Provider>

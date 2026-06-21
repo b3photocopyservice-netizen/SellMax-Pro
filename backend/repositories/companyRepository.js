@@ -36,7 +36,8 @@ class CompanyRepository {
           CurrencySymbol = @CurrencySymbol,
           TaxPercentage = @TaxPercentage,
           IsTaxActive = @IsTaxActive,
-          FinancialYearStart = @FinancialYearStart
+          FinancialYearStart = @FinancialYearStart,
+          AllowNegativeStock = @AllowNegativeStock
       OUTPUT inserted.*
       WHERE CompanyID = @CompanyID
     `;
@@ -65,7 +66,8 @@ class CompanyRepository {
       CurrencySymbol: companyData.currencySymbol || 'Rs.',
       TaxPercentage: companyData.taxPercentage !== undefined ? parseFloat(companyData.taxPercentage) : 0.00,
       IsTaxActive: companyData.isTaxActive ? 1 : 0,
-      FinancialYearStart: companyData.financialYearStart || null
+      FinancialYearStart: companyData.financialYearStart || null,
+      AllowNegativeStock: companyData.allowNegativeStock ? 1 : 0
     });
     
     return result.recordset[0] || null;

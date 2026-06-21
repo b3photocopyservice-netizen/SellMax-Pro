@@ -31,7 +31,7 @@ const AmexLogo = () => (
 );
 
 // Helper component for managing text/numeric input for quantity adjustments in cart
-const CartQtyInput = ({ item, dbProduct, updateQuantity, removeFromCart, setToast }) => {
+const CartQtyInput = ({ item, dbProduct, updateQuantity, removeFromCart, setToast, allowNegativeStock }) => {
   const [localVal, setLocalVal] = React.useState(item.quantity.toString());
 
   React.useEffect(() => {
@@ -56,7 +56,7 @@ const CartQtyInput = ({ item, dbProduct, updateQuantity, removeFromCart, setToas
     const val = e.target.value;
     setLocalVal(val);
     const parsed = parseFloat(val);
-    if (!isNaN(parsed) && parsed > 0 && parsed <= dbProduct.Stock) {
+    if (!isNaN(parsed) && parsed > 0 && (allowNegativeStock || parsed <= dbProduct.Stock)) {
       try {
         updateQuantity(item.productId, parsed, dbProduct.Stock);
       } catch (err) {
@@ -84,7 +84,7 @@ export default function Register({ setToast }) {
   const {
     cartItems, attachedCustomer, discountAmount, subtotal, taxAmount, totalAmount,
     addToCart, removeFromCart, updateQuantity, overrideItemPrice, setCustomer, applyDiscount, clearCart,
-    checkout, holdSale, resumeSale
+    checkout, holdSale, resumeSale, allowNegativeStock
   } = useCart();
 
   const [products, setProducts] = useState([]);
@@ -591,8 +591,13 @@ export default function Register({ setToast }) {
       }
       try {
         addToCart(matched);
-        if (warning) setToast({ type: 'warning', message: `Added '${matched.Name}' — ⚠ ${warning}` });
-        else setToast({ type: 'success', message: `Added '${matched.Name}' to cart.` });
+        if (matched.Stock <= 0) {
+          setToast({ type: 'warning', message: `Warning: '${matched.Name}' is out of stock. Negative inventory is enabled.` });
+        } else if (warning) {
+          setToast({ type: 'warning', message: `Added '${matched.Name}' — ⚠ ${warning}` });
+        } else {
+          setToast({ type: 'success', message: `Added '${matched.Name}' to cart.` });
+        }
       } catch (err) {
         setToast({ type: 'error', message: err.message });
       }
@@ -619,8 +624,12 @@ export default function Register({ setToast }) {
       return;
     }
     if (product.Stock <= 0) {
-      setToast({ type: 'error', message: `'${product.Name}' is out of stock.` });
-      return;
+      if (!allowNegativeStock) {
+        setToast({ type: 'error', message: `'${product.Name}' is out of stock.` });
+        return;
+      } else {
+        setToast({ type: 'warning', message: `Warning: '${product.Name}' is out of stock. Negative inventory is enabled.` });
+      }
     }
     const { blocked, warning } = checkExpiryForProduct(product);
     if (blocked) {
@@ -655,8 +664,13 @@ export default function Register({ setToast }) {
       });
       setShowVariantPicker(false);
       setVariantPickerProduct(null);
-      if (warning) setToast({ type: 'warning', message: `⚠ ${warning}` });
-      else setToast({ type: 'success', message: `Added '${product.Name}' (${variant.VariantName}) — Rs. ${Number(variant.Price).toFixed(2)}` });
+      if (product.Stock <= 0) {
+        setToast({ type: 'warning', message: `Warning: '${product.Name}' (${variant.VariantName}) is out of stock. Negative inventory is enabled.` });
+      } else if (warning) {
+        setToast({ type: 'warning', message: `⚠ ${warning}` });
+      } else {
+        setToast({ type: 'success', message: `Added '${product.Name}' (${variant.VariantName}) — Rs. ${Number(variant.Price).toFixed(2)}` });
+      }
     } catch (err) {
       setToast({ type: 'error', message: err.message });
     }
@@ -1191,7 +1205,7 @@ export default function Register({ setToast }) {
               const inCart = cartItems.find(item => item.productId === p.ProductID);
               const remainingStock = p.Stock - (inCart ? inCart.quantity : 0);
               const { blocked: expiryBlocked, warning: expiryWarning } = checkExpiryForProduct(p);
-              const isDisabled = remainingStock <= 0 || expiryBlocked;
+              const isDisabled = (remainingStock <= 0 && !allowNegativeStock) || expiryBlocked;
               return (
                 <div
                   key={p.ProductID}
@@ -1228,7 +1242,7 @@ export default function Register({ setToast }) {
                     <div className="product-meta-row">
                       <div className="product-price">Rs. {formatCurrency(p.Price)} / {p.UOM || 'pcs'}</div>
                       <div className={`product-stock ${remainingStock <= 0 || expiryBlocked ? 'out-of-stock' : remainingStock <= p.LowStockThreshold ? 'low-stock' : ''}`}>
-                        {expiryBlocked ? 'Expired' : remainingStock <= 0 ? 'Out of Stock' : `${Number(remainingStock)} ${p.UOM || 'pcs'} left`}
+                        {expiryBlocked ? 'Expired' : remainingStock <= 0 ? `Out of Stock (${Number(remainingStock)})` : `${Number(remainingStock)} ${p.UOM || 'pcs'} left`}
                       </div>
                     </div>
                   </div>
@@ -1411,6 +1425,7 @@ export default function Register({ setToast }) {
                       updateQuantity={updateQuantity}
                       removeFromCart={removeFromCart}
                       setToast={setToast}
+                      allowNegativeStock={allowNegativeStock}
                     />
                     <button 
                       className="qty-btn"

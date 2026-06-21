@@ -154,6 +154,15 @@ poolPromise.then(async (pool) => {
           PRINT 'Added VariantID and VariantName columns to OrderItems.';
       END
     `);
+
+    // Add AllowNegativeStock to Companies if not exists
+    await pool.request().query(`
+      IF COL_LENGTH('dbo.Companies', 'AllowNegativeStock') IS NULL
+      BEGIN
+          ALTER TABLE dbo.Companies ADD AllowNegativeStock BIT NOT NULL DEFAULT 0;
+          PRINT 'Added AllowNegativeStock column to Companies.';
+      END
+    `);
     
     console.log('Database migrations completed successfully.');
   } catch (migErr) {

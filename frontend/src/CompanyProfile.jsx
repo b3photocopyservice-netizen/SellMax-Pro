@@ -33,7 +33,8 @@ export default function CompanyProfile({ setToast }) {
     currencySymbol: 'Rs.',
     taxPercentage: '0.00',
     isTaxActive: true,
-    financialYearStart: ''
+    financialYearStart: '',
+    allowNegativeStock: false
   });
 
   const canManage = hasPermission('MANAGE_SETTINGS');
@@ -73,7 +74,8 @@ export default function CompanyProfile({ setToast }) {
           currencySymbol: data.CurrencySymbol || 'Rs.',
           taxPercentage: data.TaxPercentage !== undefined ? Number(data.TaxPercentage).toFixed(2) : '0.00',
           isTaxActive: data.IsTaxActive !== undefined ? !!data.IsTaxActive : true,
-          financialYearStart: data.FinancialYearStart ? data.FinancialYearStart.split('T')[0] : ''
+          financialYearStart: data.FinancialYearStart ? data.FinancialYearStart.split('T')[0] : '',
+          allowNegativeStock: data.AllowNegativeStock !== undefined ? !!data.AllowNegativeStock : false
         };
         setProfile(formatted);
         setOriginalProfile(formatted);
@@ -194,7 +196,8 @@ export default function CompanyProfile({ setToast }) {
           currencySymbol: data.CurrencySymbol || 'Rs.',
           taxPercentage: data.TaxPercentage !== undefined ? Number(data.TaxPercentage).toFixed(2) : '0.00',
           isTaxActive: data.IsTaxActive !== undefined ? !!data.IsTaxActive : true,
-          financialYearStart: data.FinancialYearStart ? data.FinancialYearStart.split('T')[0] : ''
+          financialYearStart: data.FinancialYearStart ? data.FinancialYearStart.split('T')[0] : '',
+          allowNegativeStock: data.AllowNegativeStock !== undefined ? !!data.AllowNegativeStock : false
         };
         setProfile(updated);
         setOriginalProfile(updated);
@@ -646,6 +649,25 @@ export default function CompanyProfile({ setToast }) {
                 className="form-input"
                 disabled={!canManage}
               />
+            </div>
+
+            <div className="form-group" style={{ marginTop: '16px' }}>
+              <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  name="allowNegativeStock"
+                  checked={profile.allowNegativeStock}
+                  onChange={(e) => setProfile(prev => ({ ...prev, allowNegativeStock: e.target.checked }))}
+                  disabled={!canManage}
+                  style={{ width: '18px', height: '18px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '13.5px', color: 'var(--text-primary)', fontWeight: '500' }}>
+                  Allow Sales Without Stock (Negative Inventory)
+                </span>
+              </label>
+              <p style={{ fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '26px', marginTop: '4px' }}>
+                When enabled, cashier can sell items even if stock quantity is zero or negative. Stock automatically goes into negative values.
+              </p>
             </div>
           </div>
         </div>

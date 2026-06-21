@@ -189,9 +189,10 @@ class SalesRepository {
           const syncStockReq = new db.sql.Request(transaction);
           syncStockReq.input('ProductID', db.sql.Int, item.productId);
           syncStockReq.input('CompanyID', db.sql.Int, companyId);
+          syncStockReq.input('Overshoot', db.sql.Decimal(18, 3), remainingQty);
           await syncStockReq.query(`
             UPDATE dbo.Products
-            SET Stock = ISNULL((SELECT SUM(CurrentQty) FROM dbo.ProductBatches WHERE ProductID = @ProductID AND CompanyID = @CompanyID), 0)
+            SET Stock = ISNULL((SELECT SUM(CurrentQty) FROM dbo.ProductBatches WHERE ProductID = @ProductID AND CompanyID = @CompanyID), 0) - @Overshoot
             WHERE ProductID = @ProductID AND CompanyID = @CompanyID
           `);
         } else {
