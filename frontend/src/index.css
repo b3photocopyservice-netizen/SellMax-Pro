@@ -2,10 +2,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
-  /* HSL Color System */
+  /* HSL Color System — Dark Mode (default) */
   --bg-base: #0b0f19;
   --bg-surface: rgba(22, 28, 45, 0.7);
   --bg-surface-elevated: rgba(30, 41, 59, 0.85);
+  --surface-raised: #1e2a3a;
+  --hover-bg: rgba(255, 255, 255, 0.04);
   --border-color: rgba(255, 255, 255, 0.08);
   --border-focus: rgba(139, 92, 246, 0.5);
   
@@ -37,7 +39,353 @@
   
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.15);
   --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.4);
   --shadow-glow: 0 0 20px rgba(139, 92, 246, 0.2);
+}
+
+/* ============================================================================
+   LIGHT MODE OVERRIDES
+   Applied via body.light-mode class
+   ============================================================================ */
+body.light-mode {
+  --bg-base: #f0f4f8;
+  --bg-surface: rgba(255, 255, 255, 0.85);
+  --bg-surface-elevated: rgba(255, 255, 255, 0.97);
+  --surface-raised: #ffffff;
+  --hover-bg: rgba(0, 0, 0, 0.04);
+  --border-color: rgba(0, 0, 0, 0.09);
+  --border-focus: rgba(109, 40, 217, 0.4);
+
+  --primary: #7c3aed;
+  --primary-hover: #6d28d9;
+  --primary-glow: rgba(124, 58, 237, 0.2);
+  --primary-gradient: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+
+  --accent: #0891b2;
+  --accent-hover: #0e7490;
+
+  --success: #059669;
+  --success-bg: rgba(5, 150, 105, 0.1);
+  --warning: #d97706;
+  --warning-bg: rgba(217, 119, 6, 0.1);
+  --danger: #dc2626;
+  --danger-bg: rgba(220, 38, 38, 0.1);
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.14);
+  --shadow-glow: 0 0 20px rgba(124, 58, 237, 0.15);
+}
+
+/* Light mode background */
+body.light-mode {
+  background-image:
+    radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.08) 0, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(6, 182, 212, 0.06) 0, transparent 50%),
+    radial-gradient(at 50% 0%, rgba(109, 40, 217, 0.04) 0, transparent 40%);
+}
+
+/* Light sidebar */
+body.light-mode .sidebar {
+  background: rgba(255, 255, 255, 0.92);
+  border-right-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Light nav items */
+body.light-mode .nav-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-primary);
+}
+
+body.light-mode .nav-item.active {
+  background: rgba(124, 58, 237, 0.1);
+  border-color: rgba(124, 58, 237, 0.2);
+}
+
+/* Light logo text */
+body.light-mode .logo-text {
+  background: linear-gradient(135deg, #1e1b4b 0%, #4c1d95 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Light top header */
+body.light-mode .top-header {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+/* Light glass panels */
+body.light-mode .glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Light table */
+body.light-mode .table-glass th {
+  background: rgba(241, 245, 249, 0.9);
+  color: #475569;
+}
+
+body.light-mode .table-glass td {
+  color: #0f172a;
+  border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+body.light-mode .table-glass tbody tr:hover {
+  background-color: rgba(0, 0, 0, 0.025);
+}
+
+body.light-mode .table-container {
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Light form inputs */
+body.light-mode .form-input,
+body.light-mode .form-select {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #0f172a;
+}
+
+body.light-mode .form-input::placeholder {
+  color: #94a3b8;
+}
+
+body.light-mode .form-select option {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+/* Light buttons */
+body.light-mode .btn-secondary {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #0f172a;
+}
+
+body.light-mode .btn-secondary:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+body.light-mode .btn-danger {
+  background: rgba(220, 38, 38, 0.07);
+  border-color: rgba(220, 38, 38, 0.15);
+  color: #dc2626;
+}
+
+body.light-mode .btn-danger:hover {
+  background: #dc2626;
+  color: white;
+}
+
+/* Light logout btn */
+body.light-mode .logout-btn {
+  border-color: rgba(220, 38, 38, 0.15);
+  background: rgba(220, 38, 38, 0.04);
+  color: #dc2626;
+}
+
+body.light-mode .logout-btn:hover {
+  background: #dc2626;
+  color: white;
+}
+
+/* Light modal */
+body.light-mode .modal-overlay {
+  background: rgba(15, 23, 42, 0.5);
+}
+
+body.light-mode .modal-content {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+}
+
+/* Light toast */
+body.light-mode .toast {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
+}
+
+/* Light POS product cards */
+body.light-mode .product-card {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+body.light-mode .product-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1), 0 0 15px rgba(124, 58, 237, 0.1);
+}
+
+body.light-mode .product-name {
+  color: #1e293b;
+}
+
+/* Light cart sidebar */
+body.light-mode .cart-sidebar {
+  background: rgba(248, 250, 252, 0.95);
+  border-left-color: rgba(0, 0, 0, 0.08);
+}
+
+body.light-mode .cart-item {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.07);
+}
+
+body.light-mode .cart-summary {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+body.light-mode .qty-controls {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+body.light-mode .qty-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #0f172a;
+}
+
+/* Light category tabs (POS) */
+body.light-mode .category-tab {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.09);
+  color: #475569;
+}
+
+body.light-mode .category-tab:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #0f172a;
+}
+
+/* Light metric cards */
+body.light-mode .metric-card {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Light avatar */
+body.light-mode .avatar {
+  background: #ede9fe;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Light chart grid */
+body.light-mode .chart-grid-line {
+  stroke: rgba(0, 0, 0, 0.06);
+}
+
+body.light-mode .chart-axis-text {
+  fill: #64748b;
+}
+
+/* Light scrollbar */
+body.light-mode ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+body.light-mode ::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+/* Light user profile in sidebar */
+body.light-mode .user-name {
+  color: #0f172a;
+}
+
+/* Light mode customer tag in POS */
+body.light-mode .customer-tag {
+  background: rgba(124, 58, 237, 0.08);
+  border-color: rgba(124, 58, 237, 0.15);
+}
+
+/* Light login card */
+body.light-mode .login-card {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(0, 0, 0, 0.1);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Theme Toggle Button ──────────────────────────────────────────────────── */
+.theme-toggle {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.theme-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.theme-toggle-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px;
+  overflow: hidden;
+}
+
+body.light-mode .theme-toggle-track {
+  background: rgba(124, 58, 237, 0.12);
+  border-color: rgba(124, 58, 237, 0.2);
+}
+
+.theme-toggle-track .icon-moon {
+  font-size: 11px;
+  line-height: 1;
+  transition: opacity 0.2s;
+  opacity: 0.6;
+}
+
+.theme-toggle-track .icon-sun {
+  font-size: 11px;
+  line-height: 1;
+  transition: opacity 0.2s;
+  opacity: 0.6;
+}
+
+.theme-toggle input:checked ~ .theme-toggle-track .icon-sun {
+  opacity: 1;
+}
+
+.theme-toggle input:not(:checked) ~ .theme-toggle-track .icon-moon {
+  opacity: 1;
+}
+
+.theme-toggle-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary-gradient);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s;
+  z-index: 1;
+}
+
+.theme-toggle input:checked ~ .theme-toggle-thumb {
+  transform: translateX(24px);
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
 }
 
 /* Global resets */
@@ -49,6 +397,32 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Smooth theme transition */
+body,
+.sidebar,
+.top-header,
+.glass-panel,
+.modal-content,
+.toast,
+.product-card,
+.cart-sidebar,
+.cart-item,
+.metric-card,
+.form-input,
+.form-select,
+.btn-secondary,
+.nav-item,
+.table-glass th,
+.table-glass td {
+  transition:
+    background-color 0.25s ease,
+    background 0.25s ease,
+    border-color 0.25s ease,
+    color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
 
 body {
   background-color: var(--bg-base);

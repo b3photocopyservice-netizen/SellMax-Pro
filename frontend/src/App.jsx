@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
+import { useTheme } from './contexts/ThemeContext';
 import Login from './Login';
 import Dashboard from './Dashboard';
 import logo from './assets/logo.jpg';
@@ -18,6 +19,7 @@ import {
 
 export default function App() {
   const { user, token, logout, hasPermission, login, pinLogin, API_URL, setToken, setUser } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const [activeView, setActiveView] = useState('dashboard');
   const [clockTime, setClockTime] = useState(new Date());
   
@@ -602,6 +604,15 @@ export default function App() {
             )}
 
             <div className="header-widgets">
+              {/* Theme Toggle */}
+              <label className="theme-toggle" title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
+                <input type="checkbox" checked={!isDark} onChange={toggleTheme} />
+                <div className="theme-toggle-track">
+                  <span className="icon-moon">🌙</span>
+                  <span className="icon-sun">☀️</span>
+                </div>
+                <div className="theme-toggle-thumb" />
+              </label>
               <div className="widget">
                 <Wifi size={14} style={{ color: 'var(--success)' }} />
                 <span>Store ID: #001</span>
