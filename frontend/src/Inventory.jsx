@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import formatCurrency from './utils/formatCurrency';
 import { useAuth } from './contexts/AuthContext';
-import { Search, Plus, Edit2, Trash2, Tag, RefreshCw, AlertTriangle, Ruler, Award, Calendar, Boxes, Clock, DollarSign, Check, X } from 'lucide-react';
+import InventoryAdjustments from './InventoryAdjustments';
+import { Search, Plus, Edit2, Trash2, Tag, RefreshCw, AlertTriangle, Ruler, Award, Calendar, Boxes, Clock, DollarSign, Check, X, ClipboardCheck } from 'lucide-react';
 
 export default function Inventory({ setToast }) {
   const { token, API_URL, hasPermission } = useAuth();
@@ -561,7 +562,7 @@ export default function Inventory({ setToast }) {
     <div>
       {/* ---- Tab Bar ---- */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0' }}>
-        {[{ id: 'products', label: 'Product Inventory', icon: <Boxes size={14} /> }, { id: 'expiry', label: 'Expiry Report', icon: <Clock size={14} /> }].map(tab => (
+        {[{ id: 'products', label: 'Product Inventory', icon: <Boxes size={14} /> }, { id: 'expiry', label: 'Expiry Report', icon: <Clock size={14} /> }, { id: 'adjustments', label: 'Adjustments', icon: <ClipboardCheck size={14} /> }].map(tab => (
           <button
             key={tab.id}
             onClick={() => { setActiveTab(tab.id); if (tab.id === 'expiry') fetchExpiryReport(); }}
@@ -580,7 +581,9 @@ export default function Inventory({ setToast }) {
         ))}
       </div>
 
-      {activeTab === 'expiry' ? (
+      {activeTab === 'adjustments' ? (
+        <InventoryAdjustments setToast={setToast} products={products} />
+      ) : activeTab === 'expiry' ? (
         // ---- EXPIRY REPORT TAB ----
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>

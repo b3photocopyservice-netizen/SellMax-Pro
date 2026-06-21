@@ -14,6 +14,7 @@ const salesController = require('./controllers/salesController');
 const reportsController = require('./controllers/reportsController');
 const companyController = require('./controllers/companyController');
 const supplierController = require('./controllers/supplierController');
+const adjustmentController = require('./controllers/adjustmentController');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -40,6 +41,7 @@ app.use('/api/sales', salesController);
 app.use('/api/reports', reportsController);
 app.use('/api/company', companyController);
 app.use('/api/suppliers', supplierController);
+app.use('/api/inventory/adjustments', adjustmentController);
 
 
 
@@ -164,6 +166,70 @@ poolPromise.then(async (pool) => {
       END
     `);
     
+    // Create InventoryAdjustments table if not exists
+    await pool.request().query(`
+      IF OBJECT_ID('dbo.InventoryAdjustments', 'U') IS NULL
+      BEGIN
+          CREATE TABLE dbo.InventoryAdjustments (
+              AdjustmentID      INT IDENTITY(1,1) PRIMARY KEY,
+              CompanyID         INT NOT NULL,
+              ReferenceNo       NVARCHAR(50) NOT NULL,
+              AdjustmentDate    DATE NOT NULL,
+              Status            NVARCHAR(20) NOT NULL DEFAULT 'Draft',
+              Remarks           NVARCHAR(500) NULL,
+              CreatedByUserID   INT NOT NULL,
+              ApprovedByUserID  INT NULL,
+              ApprovedAt        DATETIME NULL,
+              CreatedAt         DATETIME NOT NULL DEFAULT GETDATE(),
+              CONSTRAINT FK_InvAdj_Company FOREIGN KEY (CompanyID) REFERENCES dbo.Companies(CompanyID) ON DELETE CASCADE,
+              CONSTRAINT FK_InvAdj_CreatedBy FOREIGN KEY (CreatedByUserID) REFERENCES dbo.Users(UserID),
+              CONSTRAINT FK_InvAdj_ApprovedBy FOREIGN KEY (ApprovedByUserID) REFERENCES dbo.Users(UserID),
+              CONSTRAINT UQ_InvAdj_RefNo_Company UNIQUE (ReferenceNo, CompanyID)
+          );
+          PRINT 'Created table dbo.InventoryAdjustments.';
+      END
+    `);
+
+    // Create InventoryAdjustmentItems table if not exists
+    await pool.request().query(`
+      IF OBJECT_ID('dbo.InventoryAdjustmentItems', 'U') IS NULL
+      BEGIN
+          CREATE TABLE dbo.InventoryAdjustmentItems (
+              ItemID            INT IDENTITY(1,1) PRIMARY KEY,
+              AdjustmentID      INT NOT NULL,
+              ProductID         INT NOT NULL,
+              CurrentStock      DECIMAL(18,3) NOT NULL,
+              AdjustedQty       DECIMAL(18,3) NOT NULL,
+              CostPrice         DECIMAL(18,2) NOT NULL,
+              Reason            NVARCHAR(100) NOT NULL,
+              CONSTRAINT FK_InvAdjItem_Adj  FOREIGN KEY (AdjustmentID) REFERENCES dbo.InventoryAdjustments(AdjustmentID) ON DELETE CASCADE,
+              CONSTRAINT FK_InvAdjItem_Prod FOREIGN KEY (ProductID) REFERENCES dbo.Products(ProductID)
+          );
+          PRINT 'Created table dbo.InventoryAdjustmentItems.';
+      END
+    `);
+
+    // Create JournalEntries table if not exists
+    await pool.request().query(`
+      IF OBJECT_ID('dbo.JournalEntries', 'U') IS NULL
+      BEGIN
+          CREATE TABLE dbo.JournalEntries (
+              EntryID      INT IDENTITY(1,1) PRIMARY KEY,
+              CompanyID    INT NOT NULL,
+              SourceType   NVARCHAR(50) NOT NULL,
+              SourceID     INT NOT NULL,
+              EntryDate    DATE NOT NULL,
+              AccountName  NVARCHAR(100) NOT NULL,
+              Debit        DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+              Credit       DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+              Description  NVARCHAR(500) NULL,
+              CreatedAt    DATETIME NOT NULL DEFAULT GETDATE(),
+              CONSTRAINT FK_JournalEntries_Company FOREIGN KEY (CompanyID) REFERENCES dbo.Companies(CompanyID) ON DELETE CASCADE
+          );
+          PRINT 'Created table dbo.JournalEntries.';
+      END
+    `);
+
     console.log('Database migrations completed successfully.');
   } catch (migErr) {
     console.error('Migration failed, but starting server anyway:', migErr);
