@@ -12,7 +12,8 @@ import CompanyProfile from './CompanyProfile';
 import Suppliers from './Suppliers';
 import { 
   LayoutDashboard, ShoppingCart, Package, Users, FileBarChart2, 
-  Settings, ShieldAlert, LogOut, ShoppingBag, Clock, Wifi, DollarSign
+  Settings, ShieldAlert, LogOut, ShoppingBag, Clock, Wifi, DollarSign,
+  User
 } from 'lucide-react';
 
 export default function App() {
@@ -23,6 +24,89 @@ export default function App() {
   // Toast notifications state
   const [toast, setToast] = useState(null);
   const [showCashDrawerModal, setShowCashDrawerModal] = useState(false);
+
+  // User Profile Modal States
+  const [showUserProfileModal, setShowUserProfileModal] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    email: '',
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+    pin: ''
+  });
+  const [clearPin, setClearPin] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState('');
+
+  useEffect(() => {
+    if (showUserProfileModal && user) {
+      setProfileForm({
+        email: user.email || '',
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+        pin: ''
+      });
+      setClearPin(false);
+      setProfileError('');
+    }
+  }, [showUserProfileModal, user]);
+
+  const handleProfileSubmit = async (e) => {
+    if (e) e.preventDefault();
+    setProfileError('');
+    
+    if (profileForm.newPassword) {
+      if (profileForm.newPassword !== profileForm.confirmPassword) {
+        setProfileError('New passwords do not match.');
+        return;
+      }
+      if (!profileForm.currentPassword) {
+        setProfileError('Current password is required to change password.');
+        return;
+      }
+    }
+
+    if (profileForm.pin && profileForm.pin.length !== 4) {
+      setProfileError('PIN must be exactly 4 digits.');
+      return;
+    }
+
+    try {
+      setProfileSaving(true);
+      const res = await fetch(`${API_URL}/api/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          email: profileForm.email,
+          currentPassword: profileForm.currentPassword || undefined,
+          newPassword: profileForm.newPassword || undefined,
+          pin: clearPin ? '' : (profileForm.pin || undefined)
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update profile.');
+      }
+
+      const updatedUser = {
+        ...user,
+        email: data.email
+      };
+      setUser(updatedUser);
+
+      setToast({ type: 'success', message: 'Your profile settings have been updated successfully.' });
+      setShowUserProfileModal(false);
+    } catch (err) {
+      setProfileError(err.message || 'Verification failed.');
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
   // Admin Switch Auth Modal State
   const [showAdminAuthModal, setShowAdminAuthModal] = useState(false);
@@ -131,11 +215,14 @@ export default function App() {
         if (showCashDrawerModal) {
           setShowCashDrawerModal(false);
         }
+        if (showUserProfileModal) {
+          setShowUserProfileModal(false);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showAdminAuthModal, showCashDrawerModal]);
+  }, [showAdminAuthModal, showCashDrawerModal, showUserProfileModal]);
 
 
   const handlePinVerification = async (pinVal) => {
@@ -397,7 +484,7 @@ export default function App() {
           </nav>
 
           <div className="sidebar-footer">
-            <div className="user-profile">
+            <div className="user-profile" style={{ cursor: 'pointer' }} onClick={() => setShowUserProfileModal(true)} title="My Profile Settings">
               <div className="avatar">
                 {user.username[0].toUpperCase()}
               </div>
@@ -464,6 +551,15 @@ export default function App() {
                   >
                     <DollarSign size={15} />
                     <span>Cash Drawer</span>
+                  </button>
+
+                  <button 
+                    className="btn btn-secondary"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: '6px 12px' }}
+                    onClick={() => setShowUserProfileModal(true)}
+                  >
+                    <User size={15} />
+                    <span>My Profile</span>
                   </button>
 
                   <button 
@@ -796,6 +892,168 @@ export default function App() {
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================================
+         MODAL: MY PROFILE SETTINGS (SELF-SERVICE)
+         ============================================================================ */}
+      {showUserProfileModal && (
+        <div className="modal-overlay" style={{ zIndex: 10000 }}>
+          <div className="modal-content" style={{ width: '480px', padding: '32px' }}>
+            <h3 style={{ marginBottom: '8px', fontSize: '18px', fontWeight: 'bold', textAlign: 'center' }}>My Profile Settings</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '20px', textAlign: 'center' }}>
+              Update your account details, password, and quick-login PIN.
+            </p>
+
+            {profileError && (
+              <div style={{
+                background: 'var(--danger-bg)',
+                border: '1px solid rgba(239, 68, 68, 0.2)',
+                padding: '10px 12px',
+                borderRadius: 'var(--radius-sm)',
+                color: '#fca5a5',
+                fontSize: '12.5px',
+                marginBottom: '16px',
+                textAlign: 'center'
+              }}>
+                {profileError}
+              </div>
+            )}
+
+            <form onSubmit={handleProfileSubmit}>
+              {/* Profile Details */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                <div className="form-group">
+                  <label className="form-label">Username</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={user.username}
+                    disabled
+                    style={{ opacity: 0.6 }}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Role Group</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={user.roleName}
+                    disabled
+                    style={{ opacity: 0.6 }}
+                  />
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label className="form-label">Email Address</label>
+                <input
+                  type="email"
+                  className="form-input"
+                  value={profileForm.email}
+                  onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                  required
+                />
+              </div>
+
+              {/* Password Section */}
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '16px' }}>
+                <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', color: 'var(--primary)' }}>Change Password</h4>
+                <div className="form-group" style={{ marginBottom: '12px' }}>
+                  <label className="form-label">Current Password</label>
+                  <input
+                    type="password"
+                    className="form-input"
+                    placeholder="Enter current password to verify"
+                    value={profileForm.currentPassword}
+                    onChange={(e) => setProfileForm({ ...profileForm, currentPassword: e.target.value })}
+                    required={!!profileForm.newPassword}
+                  />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '12px' }}>
+                  <div className="form-group">
+                    <label className="form-label">New Password</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      placeholder="New password"
+                      value={profileForm.newPassword}
+                      onChange={(e) => setProfileForm({ ...profileForm, newPassword: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Confirm New Password</label>
+                    <input
+                      type="password"
+                      className="form-input"
+                      placeholder="Confirm password"
+                      value={profileForm.confirmPassword}
+                      onChange={(e) => setProfileForm({ ...profileForm, confirmPassword: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* PIN Section */}
+              <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '16px', marginTop: '16px', marginBottom: '24px' }}>
+                <h4 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '12px', color: 'var(--primary)' }}>Quick Login PIN</h4>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <div className="form-group">
+                    <label className="form-label">Configure 4-Digit PIN Code (Numeric)</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="e.g. 1234"
+                      maxLength={4}
+                      pattern="[0-9]*"
+                      value={profileForm.pin}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, '');
+                        setProfileForm({ ...profileForm, pin: val });
+                      }}
+                      disabled={clearPin}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <input
+                      type="checkbox"
+                      id="clearPinCheck"
+                      checked={clearPin}
+                      onChange={(e) => {
+                        setClearPin(e.target.checked);
+                        if (e.target.checked) setProfileForm(prev => ({ ...prev, pin: '' }));
+                      }}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                    />
+                    <label htmlFor="clearPinCheck" style={{ fontSize: '13px', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                      Clear existing security PIN code
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '16px' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={() => setShowUserProfileModal(false)}
+                  disabled={profileSaving}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  disabled={profileSaving}
+                >
+                  {profileSaving ? 'Saving Profile...' : 'Save & Update Profile'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

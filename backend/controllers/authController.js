@@ -76,6 +76,18 @@ router.get('/profile', authenticateToken, async (req, res, next) => {
   }
 });
 
+// PUT /api/auth/profile
+router.put('/profile', authenticateToken, async (req, res, next) => {
+  try {
+    const username = req.user.username;
+    const companyId = req.user.companyId;
+    const result = await authService.updateSelfProfile(username, req.body, companyId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/users/list
 router.get('/users', authenticateToken, checkPermission('MANAGE_USERS'), async (req, res, next) => {
   try {

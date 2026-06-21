@@ -183,7 +183,64 @@ class AuthService {
   async resetPin(userId, newPin, companyId) {
     const salt = await bcrypt.genSalt(10);
     const pinHash = newPin ? await bcrypt.hash(newPin.toString(), salt) : null;
-    return await userRepository.resetPin(userId, pinHash, companyId);
+    return await userRepository.updatePin(userId, pinHash, companyId);
+  }
+
+  async updateSelfProfile(username, data, companyId) {
+    const user = await userRepository.getByUsername(username);
+    if (!user) {
+      throw new Error('User not found.');
+    }
+
+    // 1. Email update
+    if (data.email && data.email !== user.Email) {
+      user.Email = data.email;
+    }
+
+    // 2. PIN update
+    if (data.pin !== undefined) {
+      const pinStr = data.pin ? data.pin.toString() : '';
+      if (pinStr && pinStr.length !== 4) {
+        throw new Error('PIN must be exactly 4 digits.');
+      }
+      const salt = await bcrypt.genSalt(10);
+      const pinHash = pinStr ? await bcrypt.hash(pinStr, salt) : null;
+      await userRepository.updatePin(user.UserID, pinHash, companyId);
+    }
+
+    // 3. Password update
+    if (data.newPassword) {
+      if (!data.currentPassword) {
+        throw new Error('Current password is required to change password.');
+      }
+      const isMatch = await bcrypt.compare(data.currentPassword, user.PasswordHash);
+      if (!isMatch) {
+        throw new Error('Incorrect current password.');
+      }
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(data.newPassword, salt);
+      await userRepository.resetPassword(user.UserID, passwordHash, companyId);
+    }
+
+    // 4. Save other fields (like Email)
+    const updated = await userRepository.update(user.UserID, {
+      email: user.Email,
+      roleId: user.RoleID,
+      isActive: user.IsActive
+    }, companyId);
+
+    if (!updated) {
+      throw new Error('Failed to update profile settings.');
+    }
+
+    return {
+      userId: updated.UserID,
+      username: updated.Username,
+      email: updated.Email,
+      roleId: updated.RoleID,
+      isActive: updated.IsActive,
+      createdAt: updated.CreatedAt
+    };
   }
 
   async getActiveUsersForPin() {
