@@ -191,7 +191,7 @@ class ReportsRepository {
         cat.Name AS CategoryName,
         NULL AS WarehouseName
       FROM dbo.SupplierReturns sr
-      INNER JOIN dbo.SupplierReturnItems sri ON sr.SupplierReturnID = sri.SupplierReturnID
+      INNER JOIN dbo.SupplierReturnItems sri ON sr.ReturnID = sri.ReturnID
       INNER JOIN dbo.Products p ON sri.ProductID = p.ProductID
       INNER JOIN dbo.Categories cat ON p.CategoryID = cat.CategoryID
       LEFT  JOIN dbo.Suppliers s ON sr.SupplierID = s.SupplierID
