@@ -24,6 +24,10 @@ class ReportsService {
   async getPriceOverridesLog(companyId, startDate, endDate) {
     return await reportsRepository.getPriceOverridesLog(companyId, startDate, endDate);
   }
+
+  async getStockMovement(companyId, filters) {
+    return await reportsRepository.getStockMovement(companyId, filters);
+  }
 }
 
 module.exports = new ReportsService();

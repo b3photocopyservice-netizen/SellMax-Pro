@@ -98,4 +98,18 @@ router.get('/price-overrides', authenticateToken, checkPermission('VIEW_REPORTS'
   }
 });
 
+// GET /api/reports/stock-movement
+router.get('/stock-movement', authenticateToken, checkPermission('VIEW_REPORTS'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const { startDate, endDate, productId, categoryId, supplierId, transactionType } = req.query;
+    const data = await reportsService.getStockMovement(companyId, {
+      startDate, endDate, productId, categoryId, supplierId, transactionType
+    });
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

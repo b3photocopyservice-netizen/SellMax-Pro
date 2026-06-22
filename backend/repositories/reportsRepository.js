@@ -96,6 +96,153 @@ class ReportsRepository {
     const result = await db.query(sqlQuery, params);
     return result.recordset;
   }
+
+  async getStockMovement(companyId, filters = {}) {
+    const params = { CompanyID: companyId };
+
+    if (filters.productId)   params.ProductID  = parseInt(filters.productId, 10);
+    if (filters.categoryId)  params.CategoryID = parseInt(filters.categoryId, 10);
+    if (filters.supplierId)  params.SupplierID = parseInt(filters.supplierId, 10);
+    if (filters.startDate)   params.StartDate  = parseLocalDate(filters.startDate, false);
+    if (filters.endDate)     params.EndDate    = parseLocalDate(filters.endDate, true);
+
+    const productCond = [
+      filters.productId  ? 'p.ProductID = @ProductID'   : '',
+      filters.categoryId ? 'p.CategoryID = @CategoryID' : '',
+    ].filter(Boolean).map(c => ' AND ' + c).join('');
+
+    const supplierCond  = filters.supplierId ? ' AND po.SupplierID = @SupplierID'  : '';
+    const supplierCondSR = filters.supplierId ? ' AND sr.SupplierID = @SupplierID' : '';
+
+    const dateFilter = (col) => {
+      let s = '';
+      if (filters.startDate) s += ` AND ${col} >= @StartDate`;
+      if (filters.endDate)   s += ` AND ${col} <= @EndDate`;
+      return s;
+    };
+
+    const tt = filters.transactionType || '';
+    const txFilter = (allowed) => (!tt || allowed.includes(tt)) ? '' : ' AND 1=0';
+
+    const sql = `
+      -- 1. Sales (stock out) and Sales Returns (stock in)
+      SELECT
+        so.OrderDate AS TxDate,
+        'SM-' + CAST(so.OrderID AS NVARCHAR) AS RefNo,
+        CASE WHEN so.Status IN ('Refunded','Exchanged') THEN 'Sales Return' ELSE 'Sale' END AS TxType,
+        CASE WHEN so.Status IN ('Refunded','Exchanged') THEN 'Sales Return' ELSE 'Sales' END AS Description,
+        ISNULL(c.Name, 'Walk-in Customer') AS Party,
+        CASE WHEN so.Status IN ('Refunded','Exchanged') THEN oi.Quantity ELSE 0 END AS StockIn,
+        CASE WHEN so.Status IN ('Refunded','Exchanged') THEN 0 ELSE oi.Quantity END AS StockOut,
+        p.ProductID, p.Name AS ProductName, p.SKU, p.UOM,
+        cat.Name AS CategoryName,
+        NULL AS WarehouseName
+      FROM dbo.SalesOrders so
+      INNER JOIN dbo.OrderItems oi ON so.OrderID = oi.OrderID
+      INNER JOIN dbo.Products p ON oi.ProductID = p.ProductID
+      INNER JOIN dbo.Categories cat ON p.CategoryID = cat.CategoryID
+      LEFT  JOIN dbo.Customers c ON so.CustomerID = c.CustomerID
+      WHERE so.CompanyID = @CompanyID
+        AND so.Status NOT IN ('Held')
+        ${productCond}
+        ${dateFilter('so.OrderDate')}
+        ${filters.supplierId ? 'AND 1=0' : ''}
+        ${txFilter(['Sale','Sales Return'])}
+
+      UNION ALL
+
+      -- 2. Purchases / GRN (stock in)
+      SELECT
+        po.OrderDate AS TxDate,
+        ISNULL(NULLIF(po.GRNNumber,''), po.PONumber) AS RefNo,
+        'Purchase' AS TxType,
+        'Purchase' AS Description,
+        ISNULL(s.SupplierName,'—') AS Party,
+        poi.ReceivedQty AS StockIn,
+        0 AS StockOut,
+        p.ProductID, p.Name AS ProductName, p.SKU, p.UOM,
+        cat.Name AS CategoryName,
+        poi.WarehouseName AS WarehouseName
+      FROM dbo.PurchaseOrders po
+      INNER JOIN dbo.PurchaseOrderItems poi ON po.PurchaseOrderID = poi.PurchaseOrderID
+      INNER JOIN dbo.Products p ON poi.ProductID = p.ProductID
+      INNER JOIN dbo.Categories cat ON p.CategoryID = cat.CategoryID
+      LEFT  JOIN dbo.Suppliers s ON po.SupplierID = s.SupplierID
+      WHERE po.CompanyID = @CompanyID
+        AND po.Status IN ('Received','Invoiced','Partially Received')
+        AND poi.ReceivedQty > 0
+        ${productCond}
+        ${supplierCond}
+        ${dateFilter('po.OrderDate')}
+        ${txFilter(['Purchase'])}
+
+      UNION ALL
+
+      -- 3. Supplier Returns (stock out)
+      SELECT
+        sr.ReturnDate AS TxDate,
+        sr.ReturnNumber AS RefNo,
+        'Purchase Return' AS TxType,
+        'Purchase Return' AS Description,
+        ISNULL(s.SupplierName,'—') AS Party,
+        0 AS StockIn,
+        sri.Quantity AS StockOut,
+        p.ProductID, p.Name AS ProductName, p.SKU, p.UOM,
+        cat.Name AS CategoryName,
+        NULL AS WarehouseName
+      FROM dbo.SupplierReturns sr
+      INNER JOIN dbo.SupplierReturnItems sri ON sr.SupplierReturnID = sri.SupplierReturnID
+      INNER JOIN dbo.Products p ON sri.ProductID = p.ProductID
+      INNER JOIN dbo.Categories cat ON p.CategoryID = cat.CategoryID
+      LEFT  JOIN dbo.Suppliers s ON sr.SupplierID = s.SupplierID
+      WHERE sr.CompanyID = @CompanyID
+        ${productCond}
+        ${supplierCondSR}
+        ${dateFilter('sr.ReturnDate')}
+        ${txFilter(['Purchase Return'])}
+
+      UNION ALL
+
+      -- 4. Inventory Adjustments (approved only)
+      SELECT
+        adj.AdjustmentDate AS TxDate,
+        adj.ReferenceNo AS RefNo,
+        'Stock Adjustment' AS TxType,
+        ISNULL(iai.Reason, 'Stock Adjustment') AS Description,
+        ISNULL(u.Username,'System') AS Party,
+        CASE WHEN iai.AdjustedQty > 0 THEN ABS(iai.AdjustedQty) ELSE 0 END AS StockIn,
+        CASE WHEN iai.AdjustedQty < 0 THEN ABS(iai.AdjustedQty) ELSE 0 END AS StockOut,
+        p.ProductID, p.Name AS ProductName, p.SKU, p.UOM,
+        cat.Name AS CategoryName,
+        NULL AS WarehouseName
+      FROM dbo.InventoryAdjustments adj
+      INNER JOIN dbo.InventoryAdjustmentItems iai ON adj.AdjustmentID = iai.AdjustmentID
+      INNER JOIN dbo.Products p ON iai.ProductID = p.ProductID
+      INNER JOIN dbo.Categories cat ON p.CategoryID = cat.CategoryID
+      LEFT  JOIN dbo.Users u ON adj.ApprovedByUserID = u.UserID
+      WHERE adj.CompanyID = @CompanyID
+        AND adj.Status = 'Approved'
+        ${productCond}
+        ${dateFilter('adj.AdjustmentDate')}
+        ${filters.supplierId ? 'AND 1=0' : ''}
+        ${txFilter(['Stock Adjustment'])}
+
+      ORDER BY TxDate ASC, RefNo ASC
+    `;
+
+    const result = await db.query(sql, params);
+    const rows = result.recordset;
+
+    // Compute running balance per product
+    const balances = {};
+    return rows.map(r => {
+      const pid = r.ProductID;
+      if (balances[pid] === undefined) balances[pid] = 0;
+      balances[pid] += (parseFloat(r.StockIn || 0) - parseFloat(r.StockOut || 0));
+      return { ...r, RunningBalance: parseFloat(balances[pid].toFixed(3)) };
+    });
+  }
+
 }
 
 module.exports = new ReportsRepository();

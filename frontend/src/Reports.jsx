@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import formatCurrency from './utils/formatCurrency';
 import { useAuth } from './contexts/AuthContext';
+import StockMovementReport from './StockMovementReport';
 import { Search, Calendar, RefreshCw, Printer, AlertTriangle, TrendingUp, ArrowLeftRight, CreditCard, ShieldAlert } from 'lucide-react';
 
 export default function Reports({ setToast }) {
@@ -538,6 +539,13 @@ export default function Reports({ setToast }) {
           <ShieldAlert size={14} style={{ display: 'inline', marginRight: '6px' }} />
           Price Overrides Log
         </button>
+        <button 
+          className={`category-tab ${activeTab === 'stock-movement' ? 'active' : ''}`}
+          onClick={() => setActiveTab('stock-movement')}
+        >
+          <TrendingUp size={14} style={{ display: 'inline', marginRight: '6px' }} />
+          Stock Movement
+        </button>
       </div>
 
       {/* Filters Area */}
@@ -821,6 +829,11 @@ export default function Reports({ setToast }) {
             </div>
           )}
         </div>
+      )}
+
+      {/* TAB 5: Stock Movement Report */}
+      {activeTab === 'stock-movement' && (
+        <StockMovementReport setToast={setToast} />
       )}
 
       {/* ============================================================================
