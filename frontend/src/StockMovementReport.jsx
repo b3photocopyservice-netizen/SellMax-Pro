@@ -246,7 +246,7 @@ export default function StockMovementReport({ setToast }) {
   return (
     <div>
       {/* ── Filter Panel ─────────────────────────────────────────────── */}
-      <div className="glass-panel" style={{ padding: '20px', marginBottom: '20px' }}>
+      <div className="glass-panel" style={{ padding: '20px', marginBottom: '20px', position: 'relative', zIndex: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg,#8b5cf6,#6d28d9)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 12px rgba(139,92,246,0.3)' }}>
