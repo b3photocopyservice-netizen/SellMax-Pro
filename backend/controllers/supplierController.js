@@ -3,10 +3,20 @@ const router = express.Router();
 const supplierService = require('../services/supplierService');
 const { authenticateToken, checkPermission } = require('../middlewares/auth');
 
-// --- SUPPLIERS MASTER ---
+// Helper permission check (can view suppliers OR view reports to view list)
+const canViewSuppliers = (req, res, next) => {
+  if (req.user && (
+    req.user.permissions.includes('VIEW_SUPPLIERS') || 
+    req.user.permissions.includes('VIEW_REPORTS') || 
+    req.user.roleName === 'Super Admin'
+  )) {
+    return next();
+  }
+  return res.status(403).json({ error: 'Permission Denied: You cannot view the supplier list.' });
+};
 
 // GET /api/suppliers
-router.get('/', authenticateToken, checkPermission('VIEW_SUPPLIERS'), async (req, res, next) => {
+router.get('/', authenticateToken, canViewSuppliers, async (req, res, next) => {
   try {
     const companyId = req.user.companyId;
     const suppliers = await supplierService.getAllSuppliers(companyId, req.query);

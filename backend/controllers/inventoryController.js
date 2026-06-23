@@ -7,7 +7,12 @@ const { authenticateToken, checkPermission } = require('../middlewares/auth');
 
 // Helper permission check (can access POS OR manage inventory to view lists)
 const canViewInventory = (req, res, next) => {
-  if (req.user && (req.user.permissions.includes('ACCESS_POS') || req.user.permissions.includes('MANAGE_INVENTORY') || req.user.roleName === 'Super Admin')) {
+  if (req.user && (
+    req.user.permissions.includes('ACCESS_POS') || 
+    req.user.permissions.includes('MANAGE_INVENTORY') || 
+    req.user.permissions.includes('VIEW_REPORTS') ||
+    req.user.roleName === 'Super Admin'
+  )) {
     return next();
   }
   return res.status(403).json({ error: 'Permission Denied: You cannot view the product list.' });
