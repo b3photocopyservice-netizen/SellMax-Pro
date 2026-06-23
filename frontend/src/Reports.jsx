@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import formatCurrency from './utils/formatCurrency';
 import { useAuth } from './contexts/AuthContext';
-import StockMovementReport from './StockMovementReport';
 import { Search, Calendar, RefreshCw, Printer, AlertTriangle, TrendingUp, ArrowLeftRight, CreditCard, ShieldAlert } from 'lucide-react';
 
 export default function Reports({ setToast }) {
   const { token, API_URL, hasPermission } = useAuth();
   
   // Tab control
-  const [activeTab, setActiveTab] = useState('journal'); // 'journal', 'products', 'customers', 'price-overrides'
+  const [activeTab, setActiveTab] = useState('journal'); // 'journal', 'products', 'customers'
 
   // Reports filters
   const [startDate, setStartDate] = useState('');
@@ -140,7 +139,6 @@ export default function Reports({ setToast }) {
   const [salesJournal, setSalesJournal] = useState([]);
   const [productPerformance, setProductPerformance] = useState([]);
   const [customerStatement, setCustomerStatement] = useState([]);
-  const [priceOverridesLog, setPriceOverridesLog] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Modal / Invoice Detail View
@@ -202,12 +200,6 @@ export default function Reports({ setToast }) {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) setCustomerStatement(await res.json());
-      }
-      else if (activeTab === 'price-overrides') {
-        const res = await fetch(`${API_URL}/api/reports/price-overrides${queryParams}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.ok) setPriceOverridesLog(await res.json());
       }
     } catch (err) {
       console.error('Failed to load report data:', err);
@@ -532,20 +524,6 @@ export default function Reports({ setToast }) {
         >
           Customer Debts & Loyalty audits
         </button>
-        <button 
-          className={`category-tab ${activeTab === 'price-overrides' ? 'active' : ''}`}
-          onClick={() => setActiveTab('price-overrides')}
-        >
-          <ShieldAlert size={14} style={{ display: 'inline', marginRight: '6px' }} />
-          Price Overrides Log
-        </button>
-        <button 
-          className={`category-tab ${activeTab === 'stock-movement' ? 'active' : ''}`}
-          onClick={() => setActiveTab('stock-movement')}
-        >
-          <TrendingUp size={14} style={{ display: 'inline', marginRight: '6px' }} />
-          Stock Movement
-        </button>
       </div>
 
       {/* Filters Area */}
@@ -762,78 +740,7 @@ export default function Reports({ setToast }) {
             </div>
           )}
 
-          {/* TAB 4: Price Overrides Log */}
-          {activeTab === 'price-overrides' && (
-            <div className="table-container">
-              <table className="table-glass">
-                <thead>
-                  <tr>
-                    <th>Timestamp</th>
-                    <th>Invoice ID</th>
-                    <th>Product</th>
-                    <th>SKU</th>
-                    <th>Original Price</th>
-                    <th>Overridden Price</th>
-                    <th>Variance</th>
-                    <th>Cashier</th>
-                    <th>Approved By</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {priceOverridesLog.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                        No price overrides recorded in this period.
-                      </td>
-                    </tr>
-                  ) : (
-                    priceOverridesLog.map((log, i) => {
-                      const diff = Number(log.OriginalPrice) - Number(log.OverriddenPrice);
-                      const pct = log.OriginalPrice > 0 ? (diff / log.OriginalPrice) * 100 : 0;
-                      return (
-                        <tr key={i} onClick={() => log.OrderID && handleInvoiceClick(log.OrderID)} style={{ cursor: log.OrderID ? 'pointer' : 'default' }}>
-                          <td>{new Date(log.CreatedAt).toLocaleString()}</td>
-                          <td className="mono" style={{ fontWeight: '600' }}>#SM-{log.OrderID}</td>
-                          <td style={{ fontWeight: '600' }}>{log.ProductName}</td>
-                          <td className="mono">{log.SKU}</td>
-                          <td className="mono">Rs. {formatCurrency(log.OriginalPrice)}</td>
-                          <td className="mono" style={{ color: '#f59e0b', fontWeight: '600' }}>
-                            Rs. {formatCurrency(log.OverriddenPrice)}
-                          </td>
-                          <td className="mono" style={{ color: diff > 0 ? 'var(--danger)' : 'var(--success)' }}>
-                            {diff > 0 ? '-' : '+'}Rs. {formatCurrency(Math.abs(diff))} ({Math.abs(pct).toFixed(1)}%)
-                          </td>
-                          <td>{log.CashierName || '—'}</td>
-                          <td>
-                            {log.ManagerName ? (
-                              <span style={{
-                                padding: '3px 8px',
-                                borderRadius: '12px',
-                                fontSize: '11px',
-                                fontWeight: '700',
-                                background: 'rgba(139, 92, 246, 0.15)',
-                                color: '#a78bfa'
-                              }}>
-                                {log.ManagerName}
-                              </span>
-                            ) : (
-                              <span style={{ color: 'var(--text-muted)' }}>System Allowed</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
-      )}
-
-      {/* TAB 5: Stock Movement Report */}
-      {activeTab === 'stock-movement' && (
-        <StockMovementReport setToast={setToast} />
       )}
 
       {/* ============================================================================

@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import formatCurrency from './utils/formatCurrency';
 import { useAuth } from './contexts/AuthContext';
 import InventoryAdjustments from './InventoryAdjustments';
-import { Search, Plus, Edit2, Trash2, Tag, RefreshCw, AlertTriangle, Ruler, Award, Calendar, Boxes, Clock, DollarSign, Check, X, ClipboardCheck } from 'lucide-react';
+import StockMovementReport from './StockMovementReport';
+import PriceOverridesReport from './PriceOverridesReport';
+import { Search, Plus, Edit2, Trash2, Tag, RefreshCw, AlertTriangle, Ruler, Award, Calendar, Boxes, Clock, DollarSign, Check, X, ClipboardCheck, TrendingUp, ShieldAlert } from 'lucide-react';
 
 export default function Inventory({ setToast }) {
   const { token, API_URL, hasPermission } = useAuth();
@@ -560,9 +562,14 @@ export default function Inventory({ setToast }) {
 
   return (
     <div>
-      {/* ---- Tab Bar ---- */}
       <div style={{ display: 'flex', gap: '4px', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '0' }}>
-        {[{ id: 'products', label: 'Product Inventory', icon: <Boxes size={14} /> }, { id: 'expiry', label: 'Expiry Report', icon: <Clock size={14} /> }, { id: 'adjustments', label: 'Adjustments', icon: <ClipboardCheck size={14} /> }].map(tab => (
+        {[
+          { id: 'products', label: 'Product Inventory', icon: <Boxes size={14} /> },
+          { id: 'expiry', label: 'Expiry Report', icon: <Clock size={14} /> },
+          { id: 'adjustments', label: 'Adjustments', icon: <ClipboardCheck size={14} /> },
+          { id: 'stock-movement', label: 'Stock Movement', icon: <TrendingUp size={14} /> },
+          { id: 'price-overrides', label: 'Price Overrides Log', icon: <ShieldAlert size={14} /> }
+        ].map(tab => (
           <button
             key={tab.id}
             onClick={() => { setActiveTab(tab.id); if (tab.id === 'expiry') fetchExpiryReport(); }}
@@ -583,6 +590,10 @@ export default function Inventory({ setToast }) {
 
       {activeTab === 'adjustments' ? (
         <InventoryAdjustments setToast={setToast} products={products} />
+      ) : activeTab === 'stock-movement' ? (
+        <StockMovementReport setToast={setToast} />
+      ) : activeTab === 'price-overrides' ? (
+        <PriceOverridesReport setToast={setToast} />
       ) : activeTab === 'expiry' ? (
         // ---- EXPIRY REPORT TAB ----
         <div>
