@@ -316,6 +316,262 @@ class SalesService {
     }
     return await salesRepository.createCashDrawerSession(companyId, userId, data);
   }
+
+  async getReconciliationSummary(companyId, userId) {
+    const activeSession = await salesRepository.getCashDrawerSessionToday(companyId, userId);
+    if (!activeSession || activeSession.Status !== 'Open') {
+      return null;
+    }
+
+    const openingTime = activeSession.OpeningTime;
+    const rawData = await salesRepository.getReconciliationSummaryData(companyId, openingTime);
+
+    // Map helper to extract payment totals
+    const getAmt = (arr, methodRegex) => {
+      return arr
+        .filter(p => methodRegex.test(p.Method))
+        .reduce((sum, p) => sum + p.TotalAmount, 0);
+    };
+
+    // Helper to get all methods that don't match standard lists to prevent missing payments
+    const getOtherAmt = (arr, standardRegexes) => {
+      return arr
+        .filter(p => !standardRegexes.some(r => r.test(p.Method)))
+        .reduce((sum, p) => sum + p.TotalAmount, 0);
+    };
+
+    const cashSales = getAmt(rawData.salesPayments, /^Cash$/i);
+    const creditSales = getAmt(rawData.salesPayments, /^Credit$/i);
+    const cardSales = getAmt(rawData.salesPayments, /^(Card|Visa|Master|Amex)$/i);
+    const qrPayments = getAmt(rawData.salesPayments, /^QR/i);
+    const onlinePayments = getAmt(rawData.salesPayments, /^(Online|Bank Transfer)/i);
+    const bankTransferPayments = getAmt(rawData.salesPayments, /^Bank\s*Transfer/i);
+    const otherSales = getOtherAmt(rawData.salesPayments, [/^Cash$/i, /^Credit$/i, /^(Card|Visa|Master|Amex)$/i, /^QR/i, /^(Online)/i, /^Bank\s*Transfer/i]);
+
+    // Less: Returns
+    const cashRefunds = getAmt(rawData.refundPayments, /^Cash$/i);
+    const creditRefunds = getAmt(rawData.refundPayments, /^Credit$/i);
+    const cardRefunds = getAmt(rawData.refundPayments, /^(Card|Visa|Master|Amex)$/i);
+    const qrRefunds = getAmt(rawData.refundPayments, /^QR/i);
+    const onlineRefunds = getAmt(rawData.refundPayments, /^(Online)/i);
+    const bankTransferRefunds = getAmt(rawData.refundPayments, /^Bank\s*Transfer/i);
+    const otherRefunds = getOtherAmt(rawData.refundPayments, [/^Cash$/i, /^Credit$/i, /^(Card|Visa|Master|Amex)$/i, /^QR/i, /^(Online)/i, /^Bank\s*Transfer/i]);
+
+    const totalRefunds = rawData.refundPayments.reduce((sum, p) => sum + p.TotalAmount, 0);
+
+    // A. SALES SUMMARY
+    const grossSales = cashSales + creditSales + cardSales + qrPayments + onlinePayments + bankTransferPayments + otherSales;
+    const netSales = grossSales - totalRefunds;
+
+    // B. CASH COLLECTION SUMMARY
+    const openingBalance = activeSession.OpeningBalance || 0;
+    const supplierCashPaidOut = rawData.supplierCashPayments || 0;
+
+    return {
+      session: {
+        sessionId: activeSession.SessionID,
+        openingTime: activeSession.OpeningTime,
+        openingBalance: activeSession.OpeningBalance,
+        terminalId: activeSession.TerminalID,
+        username: activeSession.Username || null
+      },
+      salesSummary: {
+        cashSales,
+        creditSales,
+        cardSales,
+        qrPayments,
+        onlinePayments,
+        bankTransferPayments,
+        otherSales,
+        grossSales,
+        totalRefunds,
+        netSales
+      },
+      refundSummary: {
+        cashRefunds,
+        creditRefunds,
+        cardRefunds,
+        qrRefunds,
+        onlineRefunds,
+        bankTransferRefunds,
+        otherRefunds
+      },
+      cashCollectionBase: {
+        openingBalance,
+        cashSales,
+        cashRefunds,
+        supplierCashPaidOut
+      },
+      inventorySummary: rawData.inventorySummary,
+      exceptions: rawData.exceptions
+    };
+  }
+
+  async closeCashDrawerSession(companyId, userId, payload) {
+    const activeSession = await salesRepository.getCashDrawerSessionToday(companyId, userId);
+    if (!activeSession || activeSession.Status !== 'Open') {
+      throw new Error('No open cash drawer session found to close.');
+    }
+
+    const closingData = {
+      actualCash: payload.actualCash,
+      denominations: payload.denominations,
+      expectedCash: payload.expectedCash,
+      differenceAmount: payload.differenceAmount,
+      reconciliationData: payload.reconciliationData
+    };
+
+    return await salesRepository.closeCashDrawerSession(activeSession.SessionID, closingData);
+  }
+
+  async voidOrder(orderId, companyId) {
+    const sale = await salesRepository.getSaleDetails(orderId, companyId);
+    if (!sale) {
+      throw new Error('Order not found.');
+    }
+    if (sale.order.Status === 'Cancelled') {
+      throw new Error('Order is already cancelled.');
+    }
+    return await salesRepository.voidOrderInTransaction(orderId, companyId);
+  }
+
+  async getClosedDrawerHistory(companyId) {
+    return await salesRepository.getClosedDrawerHistory(companyId);
+  }
+
+  async processExchange(exchangeRequest, companyId, userId) {
+    // 1. Check original invoice
+    const originalDetails = await salesRepository.getSaleDetails(exchangeRequest.originalOrderId, companyId);
+    if (!originalDetails) {
+      throw new Error('Original sale transaction not found.');
+    }
+
+    // 2. Validate return items against original invoice items
+    for (const returnItem of exchangeRequest.returnItems) {
+      const originalItem = originalDetails.items.find(oi => oi.ProductID === returnItem.productId);
+      if (!originalItem) {
+        throw new Error(`Item '${returnItem.name}' was not part of the original invoice.`);
+      }
+      if (returnItem.quantity > originalItem.Quantity) {
+        throw new Error(`Cannot return more items than purchased. Purchased: ${originalItem.Quantity}, Requested Return: ${returnItem.quantity}`);
+      }
+      returnItem.price = originalItem.Price;
+      returnItem.cost = originalItem.Cost;
+      returnItem.subtotal = Number((originalItem.Price * returnItem.quantity).toFixed(2));
+      returnItem.batchNo = originalItem.BatchNo || null;
+    }
+
+    // Calculate return amounts
+    const returnSubtotal = exchangeRequest.returnItems.reduce((sum, item) => sum + item.subtotal, 0);
+    const originalSubtotal = originalDetails.order.Subtotal;
+    const discountRatio = originalDetails.order.DiscountAmount / (originalSubtotal || 1);
+    const returnDiscount = Number((returnSubtotal * discountRatio).toFixed(2));
+    const returnTax = Number(((returnSubtotal - returnDiscount) * 0.10).toFixed(2)); // assuming standard 10%
+    const returnTotal = Number((returnSubtotal - returnDiscount + returnTax).toFixed(2));
+
+    exchangeRequest.returnDiscountAmount = returnDiscount;
+    exchangeRequest.returnTaxAmount = returnTax;
+    exchangeRequest.returnTotalAmount = returnTotal;
+    exchangeRequest.customerId = originalDetails.order.CustomerID;
+
+    // Validate refund payments sum if pure refund
+    if (!exchangeRequest.newOrder) {
+      const refundPaymentsSum = exchangeRequest.returnPayments.reduce((sum, p) => sum + p.amount, 0);
+      if (Math.abs(refundPaymentsSum - returnTotal) > 0.01) {
+        throw new Error(`Refund payments mismatch. Refund due: Rs. ${returnTotal.toFixed(2)}, Refund processed: Rs. ${refundPaymentsSum.toFixed(2)}`);
+      }
+    } else {
+      // It is an exchange
+      const newOrder = exchangeRequest.newOrder;
+      if (!newOrder.items || newOrder.items.length === 0) {
+        throw new Error('Exchange new bill cannot be empty. Add products to buy.');
+      }
+
+      // Fetch and populate details for new items
+      for (const item of newOrder.items) {
+        const product = await productRepository.getById(item.productId, companyId);
+        if (!product) {
+          throw new Error(`Replacement product ID ${item.productId} not found.`);
+        }
+        if (product.IsActive === false || product.IsActive === 0) {
+          throw new Error(`Replacement product '${product.Name}' is inactive.`);
+        }
+        item.cost = product.Cost;
+        item.originalPrice = product.Price;
+        item.subtotal = Number((item.price * item.quantity).toFixed(2));
+      }
+
+      const newSubtotal = newOrder.items.reduce((sum, item) => sum + item.subtotal, 0);
+      const newDiscount = newOrder.discountAmount || 0;
+      const newTax = newOrder.taxAmount !== undefined 
+        ? Number(newOrder.taxAmount)
+        : Number(((newSubtotal - newDiscount) * 0.10).toFixed(2));
+      const newTotal = Number((newSubtotal - newDiscount + newTax).toFixed(2));
+
+      newOrder.subtotal = newSubtotal;
+      newOrder.discountAmount = newDiscount;
+      newOrder.taxAmount = newTax;
+      newOrder.totalAmount = newTotal;
+
+      // Net balance check:
+      const netBalance = newTotal - returnTotal;
+      
+      // If netBalance is positive: customer pays netBalance. Payments sum must match netBalance.
+      // If netBalance is negative: system refunds ABS(netBalance). returnPayments sum must match ABS(netBalance).
+      if (netBalance > 0) {
+        const customerPaymentsSum = newOrder.payments.reduce((sum, p) => sum + p.amount, 0);
+        const expectedExchangeOffset = returnTotal;
+        const exchangeOffsetPaid = newOrder.payments.find(p => p.method === 'Exchange Set-off')?.amount || 0;
+        
+        if (Math.abs(exchangeOffsetPaid - expectedExchangeOffset) > 0.01) {
+          throw new Error(`Internal error: Exchange set-off payment must be exactly Rs. ${expectedExchangeOffset.toFixed(2)}`);
+        }
+        const extraPaid = newOrder.payments.filter(p => p.method !== 'Exchange Set-off').reduce((sum, p) => sum + p.amount, 0);
+        if (Math.abs(extraPaid - netBalance) > 0.01) {
+          throw new Error(`Customer payments mismatch. Balance due: Rs. ${netBalance.toFixed(2)}, Customer paid: Rs. ${extraPaid.toFixed(2)}`);
+        }
+
+        // Return payments will only contain the Exchange Set-off payment
+        exchangeRequest.returnPayments = [
+          { method: 'Exchange Set-off', amount: returnTotal, referenceNumber: `Exchange Offset` }
+        ];
+      } else if (netBalance < 0) {
+        const refundAmt = Math.abs(netBalance);
+        const expectedExchangeOffset = newTotal;
+        const exchangeOffsetPaid = newOrder.payments.find(p => p.method === 'Exchange Set-off')?.amount || 0;
+        
+        if (Math.abs(exchangeOffsetPaid - expectedExchangeOffset) > 0.01) {
+          throw new Error(`Internal error: Exchange set-off payment must be exactly Rs. ${expectedExchangeOffset.toFixed(2)}`);
+        }
+        if (newOrder.payments.filter(p => p.method !== 'Exchange Set-off').length > 0) {
+          throw new Error(`Internal error: No additional customer payments should be recorded since return value exceeds bill value.`);
+        }
+
+        // Return payments must contain both the Exchange Set-off and the actual refunds to cash/card/etc.
+        const returnSetoffAmt = newTotal;
+        const actualRefundsSum = exchangeRequest.returnPayments.filter(p => p.method !== 'Exchange Set-off').reduce((sum, p) => sum + p.amount, 0);
+        if (Math.abs(actualRefundsSum - refundAmt) > 0.01) {
+          throw new Error(`System refund payments mismatch. Refund due to customer: Rs. ${refundAmt.toFixed(2)}, Refund processed: Rs. ${actualRefundsSum.toFixed(2)}`);
+        }
+
+        // Prepend the Exchange Set-off payment to returnPayments
+        exchangeRequest.returnPayments = [
+          { method: 'Exchange Set-off', amount: returnSetoffAmt, referenceNumber: `Exchange Offset` },
+          ...exchangeRequest.returnPayments.filter(p => p.method !== 'Exchange Set-off')
+        ];
+      } else {
+        // netBalance is exactly 0
+        newOrder.payments = [
+          { method: 'Exchange Set-off', amount: returnTotal, referenceNumber: `Exchange Offset` }
+        ];
+        exchangeRequest.returnPayments = [
+          { method: 'Exchange Set-off', amount: returnTotal, referenceNumber: `Exchange Offset` }
+        ];
+      }
+    }
+
+    return await salesRepository.processExchange(exchangeRequest, companyId, userId);
+  }
 }
 
 module.exports = new SalesService();

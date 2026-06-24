@@ -138,4 +138,66 @@ router.post('/cash-drawer/start', authenticateToken, checkPermission('ACCESS_POS
   }
 });
 
+// GET /api/sales/cash-drawer/reconciliation-summary
+router.get('/cash-drawer/reconciliation-summary', authenticateToken, checkPermission('ACCESS_POS'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const userId = req.user.userId;
+    const summary = await salesService.getReconciliationSummary(companyId, userId);
+    if (!summary) {
+      return res.status(404).json({ error: 'No active cash drawer session found for today.' });
+    }
+    res.json(summary);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/sales/cash-drawer/close
+router.post('/cash-drawer/close', authenticateToken, checkPermission('ACCESS_POS'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const userId = req.user.userId;
+    const session = await salesService.closeCashDrawerSession(companyId, userId, req.body);
+    res.json({ session, message: 'Cash drawer session closed and reconciled successfully.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/sales/cash-drawer/history
+router.get('/cash-drawer/history', authenticateToken, canViewHistory, async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const history = await salesService.getClosedDrawerHistory(companyId);
+    res.json(history);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const canVoidOrder = (req, res, next) => {
+  if (req.user && (
+    req.user.permissions.includes('MANAGE_SETTINGS') ||
+    req.user.roleName === 'Super Admin' ||
+    req.user.roleName === 'Admin' ||
+    req.user.roleName === 'Manager'
+  )) {
+    return next();
+  }
+  return res.status(403).json({ error: 'Permission Denied: You must be an Admin or Manager to void an invoice.' });
+};
+
+// POST /api/sales/orders/:id/void
+router.post('/orders/:id/void', authenticateToken, canVoidOrder, async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const orderId = parseInt(req.params.id, 10);
+    await salesService.voidOrder(orderId, companyId);
+    res.json({ message: 'Order voided and cancelled successfully. Stock levels have been restored.' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

@@ -243,6 +243,114 @@ class ReportsRepository {
     });
   }
 
+  async getSalesReturnsReport(companyId, filters = {}) {
+    let sqlQuery = `
+      SELECT so.OrderID AS ReturnOrderID, so.OrderDate AS ReturnDate, so.ParentOrderID AS OriginalOrderID, 
+             c.Name AS CustomerName, u.Username AS CashierName,
+             ABS(so.Subtotal) AS Subtotal, ABS(so.DiscountAmount) AS DiscountAmount, ABS(so.TaxAmount) AS TaxAmount, ABS(so.TotalAmount) AS TotalAmount,
+             CASE WHEN so.Status = 'Exchange-Return' THEN 'Exchange' ELSE 'Refund' END AS ReturnType
+      FROM dbo.SalesOrders so
+      LEFT JOIN dbo.Customers c ON so.CustomerID = c.CustomerID
+      LEFT JOIN dbo.Users u ON so.UserID = u.UserID
+      WHERE so.CompanyID = @CompanyID AND so.Status IN ('Refunded', 'Exchange-Return')
+    `;
+    const params = { CompanyID: companyId };
+
+    if (filters.startDate) {
+      sqlQuery += ` AND so.OrderDate >= @StartDate`;
+      params.StartDate = parseLocalDate(filters.startDate, false);
+    }
+    if (filters.endDate) {
+      sqlQuery += ` AND so.OrderDate <= @EndDate`;
+      params.EndDate = parseLocalDate(filters.endDate, true);
+    }
+
+    sqlQuery += ` ORDER BY so.OrderDate DESC`;
+    const result = await db.query(sqlQuery, params);
+    return result.recordset;
+  }
+
+  async getRefundsReport(companyId, filters = {}) {
+    let sqlQuery = `
+      SELECT so.OrderID AS ReturnOrderID, so.OrderDate AS ReturnDate, so.ParentOrderID AS OriginalOrderID,
+             c.Name AS CustomerName, u.Username AS CashierName, ABS(so.TotalAmount) AS RefundedAmount,
+             ISNULL((SELECT STRING_AGG(Method, ', ') FROM dbo.OrderPayments WHERE OrderID = so.OrderID), 'Cash') AS RefundMethods
+      FROM dbo.SalesOrders so
+      LEFT JOIN dbo.Customers c ON so.CustomerID = c.CustomerID
+      LEFT JOIN dbo.Users u ON so.UserID = u.UserID
+      WHERE so.CompanyID = @CompanyID AND so.Status = 'Refunded'
+    `;
+    const params = { CompanyID: companyId };
+
+    if (filters.startDate) {
+      sqlQuery += ` AND so.OrderDate >= @StartDate`;
+      params.StartDate = parseLocalDate(filters.startDate, false);
+    }
+    if (filters.endDate) {
+      sqlQuery += ` AND so.OrderDate <= @EndDate`;
+      params.EndDate = parseLocalDate(filters.endDate, true);
+    }
+
+    sqlQuery += ` ORDER BY so.OrderDate DESC`;
+    const result = await db.query(sqlQuery, params);
+    return result.recordset;
+  }
+
+  async getExchangesReport(companyId, filters = {}) {
+    let sqlQuery = `
+      SELECT so.OrderID AS ReturnOrderID, so.OrderDate AS ReturnDate, so.ParentOrderID AS OriginalOrderID,
+             new_so.OrderID AS NewOrderID, c.Name AS CustomerName, u.Username AS CashierName,
+             ABS(so.TotalAmount) AS ReturnValue
+      FROM dbo.SalesOrders so
+      LEFT JOIN dbo.SalesOrders new_so ON so.OrderID = new_so.ParentOrderID AND new_so.Status = 'Exchange-Purchase'
+      LEFT JOIN dbo.Customers c ON so.CustomerID = c.CustomerID
+      LEFT JOIN dbo.Users u ON so.UserID = u.UserID
+      WHERE so.CompanyID = @CompanyID AND so.Status = 'Exchange-Return'
+    `;
+    const params = { CompanyID: companyId };
+
+    if (filters.startDate) {
+      sqlQuery += ` AND so.OrderDate >= @StartDate`;
+      params.StartDate = parseLocalDate(filters.startDate, false);
+    }
+    if (filters.endDate) {
+      sqlQuery += ` AND so.OrderDate <= @EndDate`;
+      params.EndDate = parseLocalDate(filters.endDate, true);
+    }
+
+    sqlQuery += ` ORDER BY so.OrderDate DESC`;
+    const result = await db.query(sqlQuery, params);
+    return result.recordset;
+  }
+
+  async getExchangeSettlementsReport(companyId, filters = {}) {
+    let sqlQuery = `
+      SELECT so.OrderID AS NewOrderID, so.OrderDate AS SaleDate, so.ParentOrderID AS ReturnOrderID,
+             c.Name AS CustomerName, u.Username AS CashierName,
+             so.TotalAmount AS NewInvoiceTotal,
+             ABS(ISNULL((SELECT SUM(Amount) FROM dbo.OrderPayments WHERE OrderID = so.OrderID AND Method = 'Exchange Set-off'), 0)) AS ExchangeOffset,
+             (so.TotalAmount - ABS(ISNULL((SELECT SUM(Amount) FROM dbo.OrderPayments WHERE OrderID = so.OrderID AND Method = 'Exchange Set-off'), 0))) AS NetSettlement,
+             ISNULL((SELECT STRING_AGG(Method + ': ' + CAST(Amount AS NVARCHAR(20)), ', ') FROM dbo.OrderPayments WHERE OrderID = so.OrderID AND Method <> 'Exchange Set-off'), '—') AS SettlementModes
+      FROM dbo.SalesOrders so
+      LEFT JOIN dbo.Customers c ON so.CustomerID = c.CustomerID
+      LEFT JOIN dbo.Users u ON so.UserID = u.UserID
+      WHERE so.CompanyID = @CompanyID AND so.Status = 'Exchange-Purchase'
+    `;
+    const params = { CompanyID: companyId };
+
+    if (filters.startDate) {
+      sqlQuery += ` AND so.OrderDate >= @StartDate`;
+      params.StartDate = parseLocalDate(filters.startDate, false);
+    }
+    if (filters.endDate) {
+      sqlQuery += ` AND so.OrderDate <= @EndDate`;
+      params.EndDate = parseLocalDate(filters.endDate, true);
+    }
+
+    sqlQuery += ` ORDER BY so.OrderDate DESC`;
+    const result = await db.query(sqlQuery, params);
+    return result.recordset;
+  }
 }
 
 module.exports = new ReportsRepository();

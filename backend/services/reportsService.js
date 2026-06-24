@@ -28,6 +28,22 @@ class ReportsService {
   async getStockMovement(companyId, filters) {
     return await reportsRepository.getStockMovement(companyId, filters);
   }
+
+  async getSalesReturnsReport(companyId, filters) {
+    return await reportsRepository.getSalesReturnsReport(companyId, filters);
+  }
+
+  async getRefundsReport(companyId, filters) {
+    return await reportsRepository.getRefundsReport(companyId, filters);
+  }
+
+  async getExchangesReport(companyId, filters) {
+    return await reportsRepository.getExchangesReport(companyId, filters);
+  }
+
+  async getExchangeSettlementsReport(companyId, filters) {
+    return await reportsRepository.getExchangeSettlementsReport(companyId, filters);
+  }
 }
 
 module.exports = new ReportsService();

@@ -328,16 +328,16 @@ export default function InventoryAdjustments({ setToast, products = [] }) {
               placeholder="Search by ref. no. or user..." value={filters.search}
               onChange={e => setFilters(f => ({ ...f, search: e.target.value }))} />
           </div>
-          <select className="form-input" style={{ height: '36px', fontSize: '13px', width: '140px' }}
+          <select className="form-select" style={{ height: '36px', fontSize: '13px', width: '140px', padding: '0 12px' }}
             value={filters.status} onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}>
             <option value="all">All Status</option>
             <option value="Draft">Draft</option>
             <option value="Approved">Approved</option>
             <option value="Cancelled">Cancelled</option>
           </select>
-          <input type="date" className="form-input" style={{ height: '36px', fontSize: '13px', width: '140px' }}
+          <input type="date" className="form-input" style={{ height: '36px', fontSize: '13px', width: '140px', padding: '0 12px' }}
             value={filters.startDate} onChange={e => setFilters(f => ({ ...f, startDate: e.target.value }))} />
-          <input type="date" className="form-input" style={{ height: '36px', fontSize: '13px', width: '140px' }}
+          <input type="date" className="form-input" style={{ height: '36px', fontSize: '13px', width: '140px', padding: '0 12px' }}
             value={filters.endDate} onChange={e => setFilters(f => ({ ...f, endDate: e.target.value }))} />
           <button className="btn btn-secondary" onClick={fetchAdjustments} style={{ height: '36px', width: '36px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <RefreshCw size={14} />
@@ -825,14 +825,14 @@ export default function InventoryAdjustments({ setToast, products = [] }) {
 
         {/* Report Filters */}
         <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <input type="date" className="form-input" style={{ height: '36px', fontSize: '13px', width: '150px' }}
+          <input type="date" className="form-input" style={{ height: '36px', fontSize: '13px', width: '150px', padding: '0 12px' }}
             value={reportFilters.startDate} onChange={e => setReportFilters(f => ({ ...f, startDate: e.target.value }))}
             placeholder="Start Date" />
-          <input type="date" className="form-input" style={{ height: '36px', fontSize: '13px', width: '150px' }}
+          <input type="date" className="form-input" style={{ height: '36px', fontSize: '13px', width: '150px', padding: '0 12px' }}
             value={reportFilters.endDate} onChange={e => setReportFilters(f => ({ ...f, endDate: e.target.value }))}
             placeholder="End Date" />
           {reportTab === 'product' && (
-            <select className="form-input" style={{ height: '36px', fontSize: '13px', minWidth: '200px' }}
+            <select className="form-select" style={{ height: '36px', fontSize: '13px', minWidth: '200px', padding: '0 12px' }}
               value={reportFilters.productId} onChange={e => setReportFilters(f => ({ ...f, productId: e.target.value }))}>
               <option value="">All Products</option>
               {products.map(p => <option key={p.ProductID} value={p.ProductID}>{p.Name}</option>)}

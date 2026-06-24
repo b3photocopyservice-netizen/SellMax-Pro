@@ -2466,9 +2466,9 @@ export default function Suppliers({ setToast }) {
                 style={{
                   display: 'flex', alignItems: 'center', gap: '6px',
                   padding: '6px 14px', fontSize: '12.5px', fontWeight: '600',
-                  background: purchaseSubTab === sub.id ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                  background: purchaseSubTab === sub.id ? 'var(--primary)' : 'var(--bg-surface-elevated)',
                   color: purchaseSubTab === sub.id ? 'white' : 'var(--text-secondary)',
-                  border: '1px solid ' + (purchaseSubTab === sub.id ? 'rgba(255, 255, 255, 0.1)' : 'transparent'),
+                  border: '1px solid ' + (purchaseSubTab === sub.id ? 'var(--primary)' : 'var(--border-color)'),
                   borderRadius: 'var(--radius-sm)',
                   cursor: 'pointer', transition: 'all 0.15s'
                 }}
@@ -3052,7 +3052,7 @@ export default function Suppliers({ setToast }) {
           {/* Report Data preview grid */}
           {reportResult.length > 0 && (
             selectedReportType === 'statement' ? (
-              <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px', background: 'rgba(30, 41, 59, 0.45)', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+              <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '24px', background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-color)' }}>
                 {/* Header Section */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', borderBottom: '1px solid var(--border-color)', paddingBottom: '20px' }}>
                   <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
@@ -3709,7 +3709,7 @@ export default function Suppliers({ setToast }) {
          ============================================================================ */}
       {showSupplierModal && (
         <div className="modal-overlay no-print" style={{ backdropFilter: 'blur(8px)', background: 'rgba(15, 23, 42, 0.45)' }}>
-          <div className="modal-content glass-panel" style={{ width: '1020px', padding: '20px', borderRadius: 'var(--radius-lg)', background: 'rgba(30, 41, 59, 0.9)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)' }}>
+          <div className="modal-content glass-panel" style={{ width: '1020px', padding: '20px', borderRadius: 'var(--radius-lg)', background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}>
             
             {/* Modal Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '10px' }}>
@@ -4117,7 +4117,7 @@ export default function Suppliers({ setToast }) {
 
         return (
           <div className="modal-overlay no-print">
-            <div className="modal-content glass-panel" style={{ width: '1200px', maxWidth: '95vw', padding: '24px', background: 'rgba(30, 41, 59, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
+            <div className="modal-content glass-panel" style={{ width: '1200px', maxWidth: '95vw', padding: '24px', background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
               
               {/* Modal Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '12px' }}>
@@ -4244,8 +4244,8 @@ export default function Suppliers({ setToast }) {
                                         zIndex: 999, 
                                         maxHeight: '200px', 
                                         overflowY: 'auto', 
-                                        background: 'rgba(30, 41, 59, 0.98)', 
-                                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                                        background: 'var(--bg-surface-elevated)', 
+                                        border: '1px solid var(--border-color)',
                                         boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
                                         borderRadius: 'var(--radius-sm)',
                                         padding: '4px'
@@ -4502,7 +4502,7 @@ export default function Suppliers({ setToast }) {
 
         return (
           <div className="modal-overlay no-print" onClick={(e) => e.target === e.currentTarget && setShowPoViewModal(false)}>
-            <div className="modal-content glass-panel" style={{ width: '900px', padding: '24px', background: 'rgba(30, 41, 59, 0.98)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
+            <div className="modal-content glass-panel" style={{ width: '900px', padding: '24px', background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
               
               {/* Modal Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '12px' }}>
@@ -4708,7 +4708,7 @@ export default function Suppliers({ setToast }) {
 
         return (
           <div className="modal-overlay no-print">
-            <div className="modal-content glass-panel" style={{ width: '1200px', maxWidth: '95vw', padding: '24px', background: 'rgba(30, 41, 59, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
+            <div className="modal-content glass-panel" style={{ width: '1200px', maxWidth: '95vw', padding: '24px', background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
               
               {/* Modal Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '12px' }}>
@@ -4901,7 +4901,7 @@ export default function Suppliers({ setToast }) {
 
         return (
           <div className="modal-overlay no-print">
-            <div className="modal-content glass-panel" style={{ width: '1200px', maxWidth: '95vw', padding: '24px', background: 'rgba(30, 41, 59, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
+            <div className="modal-content glass-panel" style={{ width: '1200px', maxWidth: '95vw', padding: '24px', background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
               
               {/* Modal Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '12px' }}>
@@ -5212,8 +5212,8 @@ export default function Suppliers({ setToast }) {
           <div className="modal-overlay no-print" onClick={(e) => e.target === e.currentTarget && setShowPaymentModal(false)}>
             <div style={{
               width: '520px',
-              background: 'linear-gradient(145deg, rgba(15,20,35,0.98) 0%, rgba(22,28,48,0.98) 100%)',
-              border: '1px solid rgba(139,92,246,0.25)',
+              background: 'linear-gradient(145deg, #0f1423 0%, #161c30 100%)',
+              border: '1px solid var(--border-color)',
               borderRadius: '20px',
               boxShadow: '0 32px 80px rgba(0,0,0,0.6), 0 0 40px rgba(139,92,246,0.1)',
               overflow: 'hidden',
@@ -5222,8 +5222,8 @@ export default function Suppliers({ setToast }) {
 
               {/* ── Voucher Header ── */}
               <div style={{
-                background: 'linear-gradient(135deg, rgba(139,92,246,0.3) 0%, rgba(6,182,212,0.15) 100%)',
-                borderBottom: '1px solid rgba(139,92,246,0.2)',
+                background: 'linear-gradient(135deg, #2a1f42 0%, #0c2730 100%)',
+                borderBottom: '1px solid var(--border-color)',
                 padding: '24px 28px 20px',
                 position: 'relative',
                 overflow: 'hidden',
@@ -5505,8 +5505,8 @@ export default function Suppliers({ setToast }) {
           <div className="modal-overlay no-print" onClick={(e) => e.target === e.currentTarget && setShowAdjustmentModal(false)}>
             <div style={{
               width: '520px',
-              background: 'linear-gradient(145deg, rgba(15,20,35,0.98) 0%, rgba(22,28,48,0.98) 100%)',
-              border: '1px solid rgba(139,92,246,0.25)',
+              background: 'linear-gradient(145deg, #0f1423 0%, #161c30 100%)',
+              border: '1px solid var(--border-color)',
               borderRadius: '20px',
               boxShadow: '0 32px 80px rgba(0,0,0,0.6), 0 0 40px rgba(139,92,246,0.1)',
               overflow: 'hidden',
@@ -5515,8 +5515,8 @@ export default function Suppliers({ setToast }) {
               <form onSubmit={handleAdjustmentSubmit}>
                 {/* Header */}
                 <div style={{
-                  background: 'linear-gradient(135deg, rgba(139,92,246,0.3) 0%, rgba(6,182,212,0.15) 100%)',
-                  borderBottom: '1px solid rgba(139,92,246,0.2)',
+                  background: 'linear-gradient(135deg, #2a1f42 0%, #0c2730 100%)',
+                  borderBottom: '1px solid var(--border-color)',
                   padding: '24px 28px 20px',
                   position: 'relative',
                   overflow: 'hidden',
@@ -5767,7 +5767,7 @@ export default function Suppliers({ setToast }) {
 
         return (
           <div className="modal-overlay no-print">
-            <div className="modal-content glass-panel" style={{ width: '1300px', maxWidth: '95vw', padding: '24px', background: 'rgba(30, 41, 59, 0.96)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
+            <div className="modal-content glass-panel" style={{ width: '1300px', maxWidth: '95vw', padding: '24px', background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
               
               {/* Modal Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '12px' }}>
@@ -5905,8 +5905,8 @@ export default function Suppliers({ setToast }) {
                                         zIndex: 999, 
                                         maxHeight: '200px', 
                                         overflowY: 'auto', 
-                                        background: 'rgba(30, 41, 59, 0.98)', 
-                                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                                        background: 'var(--bg-surface-elevated)', 
+                                        border: '1px solid var(--border-color)',
                                         boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
                                         borderRadius: 'var(--radius-sm)',
                                         padding: '4px'
@@ -6130,7 +6130,7 @@ export default function Suppliers({ setToast }) {
 
         return (
           <div className="modal-overlay no-print">
-            <div className="modal-content glass-panel" style={{ width: '1350px', maxWidth: '95vw', padding: '24px', background: 'rgba(30, 41, 59, 0.96)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
+            <div className="modal-content glass-panel" style={{ width: '1350px', maxWidth: '95vw', padding: '24px', background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
               
               {/* Modal Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '12px' }}>
@@ -6321,8 +6321,8 @@ export default function Suppliers({ setToast }) {
                                         zIndex: 999, 
                                         maxHeight: '200px', 
                                         overflowY: 'auto', 
-                                        background: 'rgba(30, 41, 59, 0.98)', 
-                                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                                        background: 'var(--bg-surface-elevated)', 
+                                        border: '1px solid var(--border-color)',
                                         boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
                                         borderRadius: 'var(--radius-sm)',
                                         padding: '4px'
@@ -6570,7 +6570,7 @@ Balance Due: <strong style={{ color: '#ef4444', fontSize: '14px' }} className="m
 
       {showReturnModal && (
         <div className="modal-overlay no-print">
-          <div className="modal-content glass-panel" style={{ width: '800px', background: 'rgba(30, 41, 59, 0.95)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)', padding: '24px' }}>
+          <div className="modal-content glass-panel" style={{ width: '800px', background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)', padding: '24px' }}>
             <h3 style={{ marginBottom: '16px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '8px', fontSize: '16px', fontWeight: '700', color: 'white' }}>
               {returnModalMode === 'edit' ? 'Edit Supplier Return' : 'Create Supplier Return'}
             </h3>
@@ -6717,7 +6717,7 @@ Balance Due: <strong style={{ color: '#ef4444', fontSize: '14px' }} className="m
         const totalQty = selectedReturn.items ? selectedReturn.items.reduce((sum, item) => sum + parseFloat(item.Quantity || 0), 0) : 0;
         return (
           <div className="modal-overlay no-print" onClick={(e) => e.target === e.currentTarget && setShowReturnViewModal(false)}>
-            <div className="modal-content glass-panel" style={{ width: '800px', padding: '24px', background: 'rgba(30, 41, 59, 0.98)', border: '1px solid rgba(255, 255, 255, 0.1)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
+            <div className="modal-content glass-panel" style={{ width: '800px', padding: '24px', background: 'var(--bg-surface-elevated)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', borderRadius: 'var(--radius-lg)' }}>
               
               {/* Header */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', paddingBottom: '12px' }}>

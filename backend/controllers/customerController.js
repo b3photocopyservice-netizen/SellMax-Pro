@@ -3,6 +3,8 @@ const router = express.Router();
 const customerService = require('../services/customerService');
 const { authenticateToken, checkPermission } = require('../middlewares/auth');
 
+const customerPaymentService = require('../services/customerPaymentService');
+
 // Custom access helper: cashiers need customer access to attach customers during sales
 const canAccessCustomers = (req, res, next) => {
   if (req.user && (req.user.permissions.includes('ACCESS_POS') || req.user.permissions.includes('MANAGE_CUSTOMERS') || req.user.roleName === 'Super Admin')) {
@@ -18,6 +20,17 @@ router.get('/', authenticateToken, canAccessCustomers, async (req, res, next) =>
     const { search } = req.query;
     const customers = await customerService.getAllCustomers(companyId, search);
     res.json(customers);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/customers/:id/unpaid-invoices
+router.get('/:id/unpaid-invoices', authenticateToken, canAccessCustomers, async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const unpaid = await customerPaymentService.getUnpaidInvoices(req.params.id, companyId);
+    res.json(unpaid);
   } catch (err) {
     next(err);
   }

@@ -10,11 +10,13 @@ const errorHandler = require('./middlewares/errorHandler');
 const authController = require('./controllers/authController');
 const inventoryController = require('./controllers/inventoryController');
 const customerController = require('./controllers/customerController');
+const customerPaymentController = require('./controllers/customerPaymentController');
 const salesController = require('./controllers/salesController');
 const reportsController = require('./controllers/reportsController');
 const companyController = require('./controllers/companyController');
 const supplierController = require('./controllers/supplierController');
 const adjustmentController = require('./controllers/adjustmentController');
+const exchangeController = require('./controllers/exchangeController');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -36,12 +38,14 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Bind controllers
 app.use('/api/auth', authController);
 app.use('/api/inventory', inventoryController);
+app.use('/api/customers/payments', customerPaymentController);
 app.use('/api/customers', customerController);
 app.use('/api/sales', salesController);
 app.use('/api/reports', reportsController);
 app.use('/api/company', companyController);
 app.use('/api/suppliers', supplierController);
 app.use('/api/inventory/adjustments', adjustmentController);
+app.use('/api', exchangeController);
 
 
 
@@ -123,6 +127,15 @@ poolPromise.then(async (pool) => {
               CONSTRAINT FK_CashDrawerSessions_User FOREIGN KEY (UserID) REFERENCES dbo.Users(UserID)
           );
           PRINT 'Created table dbo.CashDrawerSessions.';
+      END
+    `);
+
+    // Add ReconciliationData column to CashDrawerSessions if not exists
+    await pool.request().query(`
+      IF COL_LENGTH('dbo.CashDrawerSessions', 'ReconciliationData') IS NULL
+      BEGIN
+          ALTER TABLE dbo.CashDrawerSessions ADD ReconciliationData NVARCHAR(MAX) NULL;
+          PRINT 'Added ReconciliationData column to CashDrawerSessions.';
       END
     `);
 
@@ -227,6 +240,101 @@ poolPromise.then(async (pool) => {
               CONSTRAINT FK_JournalEntries_Company FOREIGN KEY (CompanyID) REFERENCES dbo.Companies(CompanyID) ON DELETE CASCADE
           );
           PRINT 'Created table dbo.JournalEntries.';
+      END
+    `);
+
+    // Add CustomerCode column to Customers if not exists
+    await pool.request().query(`
+      IF COL_LENGTH('dbo.Customers', 'CustomerCode') IS NULL
+      BEGIN
+          ALTER TABLE dbo.Customers ADD CustomerCode NVARCHAR(50) NULL;
+          PRINT 'Added CustomerCode column to Customers.';
+      END
+    `);
+
+    // Auto-populate CustomerCode for existing records
+    await pool.request().query(`
+      UPDATE dbo.Customers 
+      SET CustomerCode = 'CUST-' + CAST(CustomerID AS NVARCHAR(10))
+      WHERE CustomerCode IS NULL;
+    `);
+
+    // Create CustomerPayments table if not exists
+    await pool.request().query(`
+      IF OBJECT_ID('dbo.CustomerPayments', 'U') IS NULL
+      BEGIN
+          CREATE TABLE dbo.CustomerPayments (
+              PaymentID    INT IDENTITY(1,1) PRIMARY KEY,
+              CompanyID    INT NOT NULL,
+              CustomerID   INT NOT NULL,
+              UserID       INT NOT NULL,
+              ReceiptNo    NVARCHAR(50) NOT NULL UNIQUE,
+              PaymentDate  DATE NOT NULL,
+              ReferenceNo  NVARCHAR(100) NULL,
+              Remarks      NVARCHAR(500) NULL,
+              TotalAmount  DECIMAL(18,2) NOT NULL,
+              CreatedAt    DATETIME NOT NULL DEFAULT GETDATE(),
+              CONSTRAINT FK_CustomerPayments_Company FOREIGN KEY (CompanyID) REFERENCES dbo.Companies(CompanyID) ON DELETE CASCADE,
+              CONSTRAINT FK_CustomerPayments_Customer FOREIGN KEY (CustomerID) REFERENCES dbo.Customers(CustomerID),
+              CONSTRAINT FK_CustomerPayments_User FOREIGN KEY (UserID) REFERENCES dbo.Users(UserID)
+          );
+          PRINT 'Created table dbo.CustomerPayments.';
+      END
+    `);
+
+    // Create CustomerPaymentModes table if not exists
+    await pool.request().query(`
+      IF OBJECT_ID('dbo.CustomerPaymentModes', 'U') IS NULL
+      BEGIN
+          CREATE TABLE dbo.CustomerPaymentModes (
+              PaymentModeID  INT IDENTITY(1,1) PRIMARY KEY,
+              PaymentID      INT NOT NULL,
+              Method         NVARCHAR(50) NOT NULL,
+              Amount         DECIMAL(18,2) NOT NULL,
+              ReferenceNumber NVARCHAR(100) NULL,
+              CONSTRAINT FK_CustomerPaymentModes_Payment FOREIGN KEY (PaymentID) REFERENCES dbo.CustomerPayments(PaymentID) ON DELETE CASCADE
+          );
+          PRINT 'Created table dbo.CustomerPaymentModes.';
+      END
+    `);
+
+    // Create CustomerPaymentAllocations table if not exists
+    await pool.request().query(`
+      IF OBJECT_ID('dbo.CustomerPaymentAllocations', 'U') IS NULL
+      BEGIN
+          CREATE TABLE dbo.CustomerPaymentAllocations (
+              AllocationID     INT IDENTITY(1,1) PRIMARY KEY,
+              PaymentID        INT NOT NULL,
+              OrderID          INT NOT NULL,
+              AllocatedAmount  DECIMAL(18,2) NOT NULL,
+              CONSTRAINT FK_CustomerPaymentAllocations_Payment FOREIGN KEY (PaymentID) REFERENCES dbo.CustomerPayments(PaymentID) ON DELETE CASCADE,
+              CONSTRAINT FK_CustomerPaymentAllocations_Order FOREIGN KEY (OrderID) REFERENCES dbo.SalesOrders(OrderID)
+          );
+          PRINT 'Created table dbo.CustomerPaymentAllocations.';
+      END
+    `);
+
+    // Create CustomerLedgerAdjustments table if not exists
+    await pool.request().query(`
+      IF OBJECT_ID('dbo.CustomerLedgerAdjustments', 'U') IS NULL
+      BEGIN
+          CREATE TABLE dbo.CustomerLedgerAdjustments (
+              AdjustmentID     INT IDENTITY(1,1) PRIMARY KEY,
+              CompanyID        INT NOT NULL,
+              CustomerID       INT NOT NULL,
+              UserID           INT NOT NULL,
+              AdjustmentType   NVARCHAR(50) NOT NULL,
+              ReferenceNumber  NVARCHAR(50) NOT NULL UNIQUE,
+              AdjustmentDate   DATE NOT NULL,
+              Effect           NVARCHAR(10) NOT NULL,
+              Amount           DECIMAL(18,2) NOT NULL,
+              Description      NVARCHAR(500) NULL,
+              CreatedAt        DATETIME NOT NULL DEFAULT GETDATE(),
+              CONSTRAINT FK_CustAdj_Company FOREIGN KEY (CompanyID) REFERENCES dbo.Companies(CompanyID) ON DELETE CASCADE,
+              CONSTRAINT FK_CustAdj_Customer FOREIGN KEY (CustomerID) REFERENCES dbo.Customers(CustomerID) ON DELETE NO ACTION,
+              CONSTRAINT FK_CustAdj_User FOREIGN KEY (UserID) REFERENCES dbo.Users(UserID)
+          );
+          PRINT 'Created table dbo.CustomerLedgerAdjustments.';
       END
     `);
 

@@ -4,11 +4,11 @@
 :root {
   /* HSL Color System — Dark Mode (default) */
   --bg-base: #0b0f19;
-  --bg-surface: rgba(22, 28, 45, 0.7);
-  --bg-surface-elevated: rgba(30, 41, 59, 0.85);
+  --bg-surface: #161c2d; /* Solid dark blue-gray background */
+  --bg-surface-elevated: #1e293b; /* Solid dark slate elevated background */
   --surface-raised: #1e2a3a;
-  --hover-bg: rgba(255, 255, 255, 0.04);
-  --border-color: rgba(255, 255, 255, 0.08);
+  --hover-bg: rgba(255, 255, 255, 0.08);
+  --border-color: rgba(255, 255, 255, 0.16); /* Increased opacity for higher border contrast */
   --border-focus: rgba(139, 92, 246, 0.5);
   
   --primary: #8b5cf6;
@@ -37,9 +37,9 @@
   --radius-md: 12px;
   --radius-lg: 18px;
   
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.15);
-  --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
   --shadow-glow: 0 0 20px rgba(139, 92, 246, 0.2);
 }
 
@@ -49,11 +49,11 @@
    ============================================================================ */
 body.light-mode {
   --bg-base: #f0f4f8;
-  --bg-surface: rgba(255, 255, 255, 0.85);
-  --bg-surface-elevated: rgba(255, 255, 255, 0.97);
+  --bg-surface: #ffffff; /* Solid white background */
+  --bg-surface-elevated: #ffffff; /* Solid white elevated background */
   --surface-raised: #ffffff;
-  --hover-bg: rgba(0, 0, 0, 0.04);
-  --border-color: rgba(0, 0, 0, 0.09);
+  --hover-bg: rgba(0, 0, 0, 0.06);
+  --border-color: rgba(0, 0, 0, 0.16); /* Increased opacity for light mode borders */
   --border-focus: rgba(109, 40, 217, 0.4);
 
   --primary: #7c3aed;
@@ -72,12 +72,12 @@ body.light-mode {
   --danger-bg: rgba(220, 38, 38, 0.1);
 
   --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-secondary: #334155; /* Higher contrast text-secondary for light mode */
+  --text-muted: #64748b;
 
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.14);
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.22);
   --shadow-glow: 0 0 20px rgba(124, 58, 237, 0.15);
 }
 
@@ -91,8 +91,8 @@ body.light-mode {
 
 /* Light sidebar */
 body.light-mode .sidebar {
-  background: rgba(255, 255, 255, 0.92);
-  border-right-color: rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+  border-right-color: rgba(0, 0, 0, 0.12);
 }
 
 /* Light nav items */
@@ -102,8 +102,8 @@ body.light-mode .nav-item:hover {
 }
 
 body.light-mode .nav-item.active {
-  background: rgba(124, 58, 237, 0.1);
-  border-color: rgba(124, 58, 237, 0.2);
+  background: rgba(124, 58, 237, 0.12);
+  border-color: rgba(124, 58, 237, 0.25);
 }
 
 /* Light logo text */
@@ -116,24 +116,24 @@ body.light-mode .logo-text {
 
 /* Light top header */
 body.light-mode .top-header {
-  background: rgba(255, 255, 255, 0.7);
+  background: #ffffff;
 }
 
 /* Light glass panels */
 body.light-mode .glass-panel {
-  background: rgba(255, 255, 255, 0.85);
-  border-color: rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.12);
 }
 
 /* Light table */
 body.light-mode .table-glass th {
-  background: rgba(241, 245, 249, 0.9);
-  color: #475569;
+  background: #f1f5f9;
+  color: #334155;
 }
 
 body.light-mode .table-glass td {
   color: #0f172a;
-  border-bottom-color: rgba(0, 0, 0, 0.06);
+  border-bottom-color: rgba(0, 0, 0, 0.08);
 }
 
 body.light-mode .table-glass tbody tr:hover {
@@ -141,14 +141,14 @@ body.light-mode .table-glass tbody tr:hover {
 }
 
 body.light-mode .table-container {
-  border-color: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.12);
 }
 
 /* Light form inputs */
 body.light-mode .form-input,
 body.light-mode .form-select {
-  background: rgba(255, 255, 255, 0.95);
-  border-color: rgba(0, 0, 0, 0.12);
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.18);
   color: #0f172a;
 }
 
@@ -163,8 +163,8 @@ body.light-mode .form-select option {
 
 /* Light buttons */
 body.light-mode .btn-secondary {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.12);
   color: #0f172a;
 }
 
@@ -197,13 +197,13 @@ body.light-mode .logout-btn:hover {
 
 /* Light modal */
 body.light-mode .modal-overlay {
-  background: rgba(15, 23, 42, 0.5);
+  background: rgba(15, 23, 42, 0.6);
 }
 
 body.light-mode .modal-content {
   background: #ffffff;
-  border-color: rgba(0, 0, 0, 0.1);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+  border-color: rgba(0, 0, 0, 0.16);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
 }
 
 /* Light toast */
@@ -215,8 +215,8 @@ body.light-mode .toast {
 
 /* Light POS product cards */
 body.light-mode .product-card {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.12);
 }
 
 body.light-mode .product-card:hover {
@@ -230,8 +230,8 @@ body.light-mode .product-name {
 
 /* Light cart sidebar */
 body.light-mode .cart-sidebar {
-  background: rgba(248, 250, 252, 0.95);
-  border-left-color: rgba(0, 0, 0, 0.08);
+  background: #f8fafc;
+  border-left-color: rgba(0, 0, 0, 0.12);
 }
 
 body.light-mode .cart-item {
@@ -254,20 +254,21 @@ body.light-mode .qty-btn:hover {
 
 /* Light category tabs (POS) */
 body.light-mode .category-tab {
-  background: rgba(0, 0, 0, 0.03);
-  border-color: rgba(0, 0, 0, 0.09);
-  color: #475569;
+  background: #e2e8f0;
+  border-color: rgba(0, 0, 0, 0.15);
+  color: #334155;
+  font-weight: 600;
 }
 
 body.light-mode .category-tab:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: #cbd5e1;
   color: #0f172a;
 }
 
 /* Light metric cards */
 body.light-mode .metric-card {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(0, 0, 0, 0.08);
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, 0.12);
 }
 
 /* Light avatar */
@@ -636,8 +637,7 @@ body {
 .top-header {
   height: 70px;
   border-bottom: 1px solid var(--border-color);
-  background: rgba(15, 23, 42, 0.3);
-  backdrop-filter: blur(12px);
+  background: #0d121f; /* Solid dark background matching dark theme */
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -781,7 +781,7 @@ body {
 
 .form-input {
   width: 100%;
-  background: rgba(15, 23, 42, 0.6);
+  background: #090c15; /* Solid dark color for inputs */
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -798,7 +798,7 @@ body {
 
 .form-select {
   width: 100%;
-  background: rgba(15, 23, 42, 0.6);
+  background: #090c15; /* Solid dark color for selects */
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -832,7 +832,7 @@ body {
 }
 
 .table-glass th {
-  background: rgba(15, 23, 42, 0.5);
+  background: #0f1422;
   color: var(--text-secondary);
   font-weight: 600;
   padding: 16px 20px;
@@ -992,7 +992,7 @@ body {
 
 .category-tab {
   padding: 10px 20px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg-surface-elevated);
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
   border-radius: 30px;
@@ -1023,7 +1023,7 @@ body {
 }
 
 .product-card {
-  background: rgba(22, 28, 45, 0.5);
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 12px;
@@ -1107,9 +1107,8 @@ body {
 /* Sidebar Checkout cart */
 .cart-sidebar {
   width: 380px;
-  background: rgba(15, 23, 42, 0.65);
+  background: #0f1422;
   border-left: 1px solid var(--border-color);
-  backdrop-filter: blur(20px);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -1452,11 +1451,10 @@ body {
 
 .login-card {
   width: 440px;
-  background: rgba(15, 23, 42, 0.45);
+  background: var(--bg-surface-elevated);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   padding: 40px;
-  backdrop-filter: blur(24px);
   box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
 }
 
@@ -1683,4 +1681,22 @@ body {
 
 .search-item-hover:hover {
   background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dropdown-item-hover {
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
+.dropdown-item-hover:hover {
+  background: var(--hover-bg) !important;
+}
+
+/* Fix heights and vertical alignment for select and date elements */
+select.form-input,
+.form-select,
+.form-input[type="date"] {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  height: 42px;
 }

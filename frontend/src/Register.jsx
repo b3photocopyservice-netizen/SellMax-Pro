@@ -4,6 +4,7 @@ import formatCurrency from './utils/formatCurrency';
 import { useAuth } from './contexts/AuthContext';
 import { Search, Plus, Minus, Trash2, FolderMinus, UserPlus, CreditCard, RefreshCw, ShoppingCart, Lock, DollarSign, Printer, CheckCircle, AlertTriangle, Clock, Eye, EyeOff } from 'lucide-react';
 import usePermanentFocus from './hooks/usePermanentFocus';
+import DayEndReconciliation from './DayEndReconciliation';
 
 // Card Brand Logos for POS Checkout
 const VisaLogo = () => (
@@ -124,6 +125,7 @@ export default function Register({ setToast }) {
   const [drawerSession, setDrawerSession] = useState(null);
   const [showDayStartModal, setShowDayStartModal] = useState(false);
   const [showDrawerDetailsModal, setShowDrawerDetailsModal] = useState(false);
+  const [showDayEndWizard, setShowDayEndWizard] = useState(false);
   const [terminalId, setTerminalId] = useState('Terminal-01');
   const [dayStartMode, setDayStartMode] = useState('denominations'); // 'denominations' or 'direct'
   const [dayStartDirectAmt, setDayStartDirectAmt] = useState('');
@@ -2464,7 +2466,10 @@ export default function Register({ setToast }) {
               )}
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '24px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', justifyContent: 'center', marginTop: '24px' }}>
+              <button className="btn btn-danger" style={{ width: '100%', background: 'var(--danger)', color: 'white', border: 'none' }} onClick={() => { setShowDrawerDetailsModal(false); setShowDayEndWizard(true); }}>
+                Perform Day-End Closing & Close Session
+              </button>
               <button className="btn btn-secondary" style={{ width: '100%' }} onClick={() => setShowDrawerDetailsModal(false)}>Close View</button>
             </div>
           </div>
@@ -2545,6 +2550,18 @@ export default function Register({ setToast }) {
           </div>
         );
       })()}
+
+      {showDayEndWizard && (
+        <DayEndReconciliation 
+          onClose={() => setShowDayEndWizard(false)} 
+          setToast={setToast} 
+          onSessionClosed={() => {
+            setShowDayEndWizard(false);
+            setDrawerSession(null);
+            checkDrawerStatus();
+          }} 
+        />
+      )}
 
     </div>
   );

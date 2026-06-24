@@ -11,10 +11,11 @@ import Reports from './Reports';
 import UserManagement from './UserManagement';
 import CompanyProfile from './CompanyProfile';
 import Suppliers from './Suppliers';
+import SalesExchange from './SalesExchange';
 import { 
   LayoutDashboard, ShoppingCart, Package, Users, FileBarChart2, 
   Settings, ShieldAlert, LogOut, ShoppingBag, Clock, Wifi, DollarSign,
-  User
+  User, RefreshCw
 } from 'lucide-react';
 
 export default function App() {
@@ -362,6 +363,8 @@ export default function App() {
         return <CompanyProfile setToast={setToast} />;
       case 'suppliers':
         return <Suppliers setToast={setToast} />;
+      case 'exchange':
+        return <SalesExchange setToast={setToast} />;
       default:
         return <Dashboard />;
     }
@@ -385,6 +388,8 @@ export default function App() {
         return { title: 'Company Settings', sub: 'Configure company information, logo, contacts, address and financial policies' };
       case 'suppliers':
         return { title: 'Suppliers Master Console', sub: 'Manage supplier profiles, purchase orders, goods receipts, return policies and settlements' };
+      case 'exchange':
+        return { title: 'Sales Returns & Exchanges', sub: 'Process return credits, cash refunds, and exchange replacement bills' };
       default:
         return { title: 'SellMax Pro Dashboard', sub: 'Retail control terminal' };
     }
@@ -421,6 +426,16 @@ export default function App() {
               >
                 <ShoppingCart />
                 <span>POS Terminal</span>
+              </div>
+            )}
+
+            {hasPermission('RETURN_EXCHANGE_SALE') && (
+              <div 
+                className={`nav-item ${activeView === 'exchange' ? 'active' : ''}`}
+                onClick={() => handleNavClick('exchange')}
+              >
+                <RefreshCw />
+                <span>Sales Exchange</span>
               </div>
             )}
 
@@ -543,6 +558,17 @@ export default function App() {
                     <ShoppingCart size={15} />
                     <span>New Sale</span>
                   </button>
+
+                  {hasPermission('RETURN_EXCHANGE_SALE') && (
+                    <button 
+                      className={`btn ${activeView === 'exchange' ? 'btn-primary' : 'btn-secondary'}`}
+                      style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: '6px 12px' }}
+                      onClick={() => handleNavClick('exchange')}
+                    >
+                      <RefreshCw size={15} />
+                      <span>Sales Exchange</span>
+                    </button>
+                  )}
                   
                   <button 
                     className="btn btn-secondary"
