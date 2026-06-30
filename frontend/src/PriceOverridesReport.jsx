@@ -3,8 +3,9 @@ import { useAuth } from './contexts/AuthContext';
 import formatCurrency from './utils/formatCurrency';
 import {
   Calendar, RefreshCw, Printer, Download,
-  TrendingDown, ShieldAlert, Search, X, FileText
+  TrendingDown, ShieldAlert, Search, X, FileText, Eye, FileDown, FileSpreadsheet
 } from 'lucide-react';
+import PrintPreviewModal from './PrintPreviewModal';
 
 const fmtDate = (d) => {
   if (!d) return '—';
@@ -37,6 +38,17 @@ export default function PriceOverridesReport({ setToast }) {
   const [activeOrder, setActiveOrder] = useState(null);
   const [companyInfo, setCompanyInfo] = useState(null);
 
+  // Print Preview configuration state
+  const [previewConfig, setPreviewConfig] = useState({
+    show: false,
+    title: '',
+    headers: [],
+    rows: [],
+    columnConfig: [],
+    totalsRow: null,
+    layoutPreset: 'landscape' // Price override has many columns
+  });
+
   useEffect(() => {
     runReport();
     fetchCompanyInfo();
@@ -50,6 +62,82 @@ export default function PriceOverridesReport({ setToast }) {
       if (res.ok) setCompanyInfo(await res.json());
     } catch (err) {
       console.error('Failed to load company info:', err);
+    }
+  };
+
+  const triggerReportAction = (actionType) => {
+    const title = `Price Overrides Audit Log (${startDate || '—'} to ${endDate || '—'})`;
+
+    const headers = ['Timestamp', 'Invoice ID', 'Product', 'SKU', 'Original Price', 'Overridden Price', 'Variance', 'Variance %', 'Cashier', 'Approved By'];
+    const colConfig = [
+      { align: 'left' },
+      { align: 'left' },
+      { align: 'left' },
+      { align: 'left' },
+      { align: 'right', isCurrency: true },
+      { align: 'right', isCurrency: true },
+      { align: 'right', isCurrency: true },
+      { align: 'right' },
+      { align: 'left' },
+      { align: 'left' }
+    ];
+
+    const rows = filtered.map(r => {
+      const diff = Number(r.OriginalPrice) - Number(r.OverriddenPrice);
+      const pct = r.OriginalPrice > 0 ? (diff / r.OriginalPrice) * 100 : 0;
+      return [
+        fmtDate(r.CreatedAt),
+        `#SM-${r.OrderID}`,
+        r.ProductName,
+        r.SKU,
+        Number(r.OriginalPrice || 0),
+        Number(r.OverriddenPrice || 0),
+        Number(diff || 0),
+        `${pct.toFixed(1)}%`,
+        r.CashierName,
+        r.ManagerName || 'System Allowed'
+      ];
+    });
+
+    const totalOrig = filtered.reduce((sum, r) => sum + parseFloat(r.OriginalPrice || 0), 0);
+    const totalOverridden = filtered.reduce((sum, r) => sum + parseFloat(r.OverriddenPrice || 0), 0);
+    const totalVariance = filtered.reduce((sum, r) => sum + (parseFloat(r.OriginalPrice || 0) - parseFloat(r.OverriddenPrice || 0)), 0);
+    const totalPct = totalOrig > 0 ? (totalVariance / totalOrig) * 100 : 0;
+    const totalsRow = ['TOTAL', '', '', '', totalOrig, totalOverridden, totalVariance, `${totalPct.toFixed(1)}%`, '', ''];
+
+    if (actionType === 'excel') {
+      const csvRows = [];
+      csvRows.push(`"${title.replace(/"/g, '""')}"`);
+      csvRows.push(`"Print Date: ${new Date().toLocaleString()}"`);
+      csvRows.push('');
+      csvRows.push(headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','));
+      rows.forEach(r => csvRows.push(r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')));
+      if (totalsRow.length > 0) csvRows.push(totalsRow.map(t => `"${String(t ?? '').replace(/"/g, '""')}"`).join(','));
+      
+      const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `${title.toLowerCase().replace(/[^a-z0-9]/g, '_')}_report.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+    else {
+      setPreviewConfig({
+        show: true,
+        title,
+        headers,
+        rows,
+        columnConfig: colConfig,
+        totalsRow,
+        layoutPreset: 'landscape'
+      });
+      if (actionType === 'print' || actionType === 'pdf') {
+        setTimeout(() => {
+          window.print();
+        }, 300);
+      }
     }
   };
 
@@ -222,6 +310,11 @@ export default function PriceOverridesReport({ setToast }) {
     if (diff > 0) acc.overrideCount++;
     return acc;
   }, { reductionValue: 0, overrideCount: 0 });
+
+  const totalOrig = filtered.reduce((sum, r) => sum + parseFloat(r.OriginalPrice || 0), 0);
+  const totalOverridden = filtered.reduce((sum, r) => sum + parseFloat(r.OverriddenPrice || 0), 0);
+  const totalVariance = totalOrig - totalOverridden;
+  const totalPct = totalOrig > 0 ? (totalVariance / totalOrig) * 100 : 0;
 
   /* ── print log report ────────────────────────────────────────────────── */
   const handlePrintReport = () => {
@@ -413,13 +506,21 @@ export default function PriceOverridesReport({ setToast }) {
             </div>
 
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-secondary" onClick={handlePrintReport} disabled={!filtered.length}
+              <button className="btn btn-secondary" onClick={() => triggerReportAction('preview')} disabled={!filtered.length}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '7px 14px' }}>
-                <Printer size={14} /> Print Report
+                <Eye size={14} /> Preview
               </button>
-              <button className="btn btn-secondary" onClick={handleExportCSV} disabled={!filtered.length}
+              <button className="btn btn-secondary" onClick={() => triggerReportAction('print')} disabled={!filtered.length}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '7px 14px' }}>
-                <Download size={14} /> Export CSV
+                <Printer size={14} /> Print
+              </button>
+              <button className="btn btn-secondary" onClick={() => triggerReportAction('pdf')} disabled={!filtered.length}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '7px 14px' }}>
+                <FileDown size={14} /> PDF
+              </button>
+              <button className="btn btn-secondary" onClick={() => triggerReportAction('excel')} disabled={!filtered.length}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '7px 14px' }}>
+                <FileSpreadsheet size={14} /> Excel
               </button>
             </div>
           </div>
@@ -505,6 +606,15 @@ export default function PriceOverridesReport({ setToast }) {
                     );
                   })}
                 </tbody>
+                <tfoot>
+                  <tr style={{ background: 'rgba(139,92,246,0.06)', borderTop: '2px solid var(--border-color)', fontWeight: 'bold' }}>
+                    <td colSpan={4} style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>TOTAL ACTIVITY</td>
+                    <td className="mono" style={{ textAlign: 'right', padding: '14px 20px' }}>Rs. {formatCurrency(totalOrig)}</td>
+                    <td className="mono" style={{ textAlign: 'right', padding: '14px 20px', color: '#f59e0b' }}>Rs. {formatCurrency(totalOverridden)}</td>
+                    <td className="mono" style={{ textAlign: 'right', padding: '14px 20px', color: '#ef4444' }}>-Rs. {formatCurrency(totalVariance)} ({totalPct.toFixed(1)}%)</td>
+                    <td colSpan={3}></td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
@@ -622,6 +732,21 @@ export default function PriceOverridesReport({ setToast }) {
           </div>
         </div>
       )}
+
+      <PrintPreviewModal 
+        show={previewConfig.show}
+        onClose={() => setPreviewConfig(prev => ({ ...prev, show: false }))}
+        title={previewConfig.title}
+        companyInfo={companyInfo}
+        filters={{
+          'Period': startDate && endDate ? `${startDate} to ${endDate}` : 'All-time'
+        }}
+        headers={previewConfig.headers}
+        rows={previewConfig.rows}
+        columnConfig={previewConfig.columnConfig}
+        totalsRow={previewConfig.totalsRow}
+        layoutPreset={previewConfig.layoutPreset}
+      />
 
       {/* spin keyframe */}
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>

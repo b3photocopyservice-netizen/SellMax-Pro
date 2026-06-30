@@ -4,8 +4,9 @@ import formatCurrency from './utils/formatCurrency';
 import {
   Search, Calendar, RefreshCw, Printer, Download,
   ArrowUpCircle, ArrowDownCircle, TrendingUp, TrendingDown,
-  Filter, X, Package, ChevronDown, FileText
+  Filter, X, Package, ChevronDown, FileText, Eye, FileDown, FileSpreadsheet
 } from 'lucide-react';
+import PrintPreviewModal from './PrintPreviewModal';
 
 /* ── colour mapping per transaction type ──────────────────────────────── */
 const TX_META = {
@@ -58,6 +59,18 @@ export default function StockMovementReport({ setToast }) {
   const [loading, setLoading] = useState(false);
   const [hasRun,  setHasRun]  = useState(false);
 
+  // Print Preview configuration state
+  const [previewConfig, setPreviewConfig] = useState({
+    show: false,
+    title: '',
+    headers: [],
+    rows: [],
+    columnConfig: [],
+    totalsRow: null,
+    layoutPreset: 'landscape' // Stock movement has many columns, so landscape is optimal
+  });
+  const [companyInfo, setCompanyInfo] = useState(null);
+
   /* ── product search autocomplete ───────────────────────────────────── */
   const [prodSearch, setProdSearch] = useState('');
   const [showProdDD, setShowProdDD] = useState(false);
@@ -65,7 +78,92 @@ export default function StockMovementReport({ setToast }) {
 
   useEffect(() => {
     fetchLookups();
+    fetchCompanyInfo();
   }, []);
+
+  const fetchCompanyInfo = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/company`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setCompanyInfo(await res.json());
+      }
+    } catch (err) {
+      console.error('Failed to load company config:', err);
+    }
+  };
+
+  const triggerReportAction = (actionType) => {
+    const titleParts = [];
+    if (selectedProd) titleParts.push(selectedProd.Name);
+    if (startDate || endDate) titleParts.push(`${startDate || '—'} to ${endDate || '—'}`);
+    const title = 'Stock Movement Report' + (titleParts.length ? ` (${titleParts.join(' | ')})` : '');
+
+    const headers = ['Date', 'Reference No', 'Type', 'Description', 'Product Name', 'Party', 'Stock In', 'Stock Out', 'Running Balance'];
+    const colConfig = [
+      { align: 'left' },
+      { align: 'left' },
+      { align: 'left' },
+      { align: 'left' },
+      { align: 'left' },
+      { align: 'left' },
+      { align: 'right' },
+      { align: 'right' },
+      { align: 'right' }
+    ];
+
+    const rows = filtered.map(r => [
+      new Date(r.TxDate).toLocaleDateString('en-LK'),
+      r.RefNo || '—',
+      r.TxType,
+      r.Description || '—',
+      r.ProductName,
+      r.Party || '—',
+      parseFloat(r.StockIn || 0),
+      parseFloat(r.StockOut || 0),
+      parseFloat(r.RunningBalance || 0)
+    ]);
+
+    const sumIn = filtered.reduce((sum, r) => sum + parseFloat(r.StockIn || 0), 0);
+    const sumOut = filtered.reduce((sum, r) => sum + parseFloat(r.StockOut || 0), 0);
+    const totalsRow = ['TOTAL', '', '', '', '', '', sumIn, sumOut, closingBalance];
+
+    if (actionType === 'excel') {
+      const csvRows = [];
+      csvRows.push(`"${title.replace(/"/g, '""')}"`);
+      csvRows.push(`"Print Date: ${new Date().toLocaleString()}"`);
+      csvRows.push('');
+      csvRows.push(headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','));
+      rows.forEach(r => csvRows.push(r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')));
+      if (totalsRow.length > 0) csvRows.push(totalsRow.map(t => `"${String(t ?? '').replace(/"/g, '""')}"`).join(','));
+      
+      const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `${title.toLowerCase().replace(/[^a-z0-9]/g, '_')}_report.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+    else {
+      setPreviewConfig({
+        show: true,
+        title,
+        headers,
+        rows,
+        columnConfig: colConfig,
+        totalsRow,
+        layoutPreset: 'landscape'
+      });
+      if (actionType === 'print' || actionType === 'pdf') {
+        setTimeout(() => {
+          window.print();
+        }, 300);
+      }
+    }
+  };
 
   useEffect(() => {
     const handleClick = (e) => {
@@ -428,13 +526,21 @@ export default function StockMovementReport({ setToast }) {
             </div>
 
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-secondary" onClick={handlePrint} disabled={!filtered.length}
+              <button className="btn btn-secondary" onClick={() => triggerReportAction('preview')} disabled={!filtered.length}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '7px 14px' }}>
-                <Printer size={14} /> Print / PDF
+                <Eye size={14} /> Preview
               </button>
-              <button className="btn btn-secondary" onClick={handleExportCSV} disabled={!filtered.length}
+              <button className="btn btn-secondary" onClick={() => triggerReportAction('print')} disabled={!filtered.length}
                 style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '7px 14px' }}>
-                <Download size={14} /> Export CSV
+                <Printer size={14} /> Print
+              </button>
+              <button className="btn btn-secondary" onClick={() => triggerReportAction('pdf')} disabled={!filtered.length}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '7px 14px' }}>
+                <FileDown size={14} /> PDF
+              </button>
+              <button className="btn btn-secondary" onClick={() => triggerReportAction('excel')} disabled={!filtered.length}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '7px 14px' }}>
+                <FileSpreadsheet size={14} /> Excel
               </button>
             </div>
           </div>
@@ -559,6 +665,25 @@ export default function StockMovementReport({ setToast }) {
           <div style={{ fontSize: 14 }}>Select your filters above and click <strong>Run Report</strong> to see the stock movement history.</div>
         </div>
       )}
+
+      <PrintPreviewModal 
+        show={previewConfig.show}
+        onClose={() => setPreviewConfig(prev => ({ ...prev, show: false }))}
+        title={previewConfig.title}
+        companyInfo={companyInfo}
+        filters={{
+          'Product context': selectedProd ? selectedProd.Name : 'All Products',
+          'Period': startDate && endDate ? `${startDate} to ${endDate}` : 'All-time',
+          'Category filter': categories.find(c => String(c.CategoryID) === String(categoryId))?.Name || 'All Categories',
+          'Supplier filter': suppliers.find(s => String(s.SupplierID) === String(supplierId))?.SupplierName || 'All Suppliers',
+          'Transaction type': txType || 'All Types'
+        }}
+        headers={previewConfig.headers}
+        rows={previewConfig.rows}
+        columnConfig={previewConfig.columnConfig}
+        totalsRow={previewConfig.totalsRow}
+        layoutPreset={previewConfig.layoutPreset}
+      />
 
       {/* spin keyframe */}
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>

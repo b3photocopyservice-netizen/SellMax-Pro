@@ -380,11 +380,10 @@ export default function CustomerPayments({ selectedCustomerFromDir, onBackToDire
     }
     popup.document.write(html);
     popup.document.close();
-    popup.focus();
-    popup.onload = () => {
+    setTimeout(() => {
       popup.print();
       popup.close();
-    };
+    }, 250);
   };
 
   const filteredCustomers = searchQuery
@@ -652,6 +651,16 @@ export default function CustomerPayments({ selectedCustomerFromDir, onBackToDire
                         );
                       })}
                     </tbody>
+                    <tfoot>
+                      <tr style={{ fontWeight: 'bold', background: 'rgba(255, 255, 255, 0.05)' }}>
+                        <td colSpan={2}>TOTAL</td>
+                        <td className="mono">Rs. {formatCurrency(unpaidInvoices.reduce((sum, inv) => sum + parseFloat(inv.InvoiceTotal || 0), 0))}</td>
+                        <td className="mono" style={{ color: 'var(--danger)' }}>Rs. {formatCurrency(unpaidInvoices.reduce((sum, inv) => sum + parseFloat(inv.BalanceAmount || 0), 0))}</td>
+                        <td className="mono" style={{ color: 'var(--success)' }}>
+                          Rs. {formatCurrency(unpaidInvoices.reduce((sum, inv) => sum + parseFloat(currentAllocations[inv.OrderID] || 0), 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               )

@@ -112,4 +112,44 @@ router.get('/stock-movement', authenticateToken, checkPermission('VIEW_REPORTS')
   }
 });
 
+// GET /api/reports/sales-analysis
+router.get('/sales-analysis', authenticateToken, checkPermission('VIEW_REPORTS'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const { reportType, startDate, endDate, branchName } = req.query;
+    const data = await reportsService.getSalesAnalysisReport(companyId, { reportType, startDate, endDate, branchName });
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/reports/profit-analysis
+router.get('/profit-analysis', authenticateToken, checkPermission('VIEW_REPORTS'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const { reportType, startDate, endDate, productId, categoryId, brand, customerId, userId, branchName } = req.query;
+    const data = await reportsService.getProfitAnalysisReport(companyId, {
+      reportType, startDate, endDate, productId, categoryId, brand, customerId, userId, branchName
+    });
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/reports/kpi-dashboard
+router.get('/kpi-dashboard', authenticateToken, checkPermission('VIEW_REPORTS'), async (req, res, next) => {
+  try {
+    const companyId = req.user.companyId;
+    const { startDate, endDate, productId, categoryId, brand, customerId, userId, branchName } = req.query;
+    const data = await reportsService.getDashboardKPIs(companyId, {
+      startDate, endDate, productId, categoryId, brand, customerId, userId, branchName
+    });
+    res.json(data);
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

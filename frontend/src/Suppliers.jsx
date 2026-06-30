@@ -4,9 +4,10 @@ import { useAuth } from './contexts/AuthContext';
 import { 
   Building2, ShoppingBag, Coins, FileText, Plus, Search, Edit2, Trash2, 
   RefreshCw, CheckCircle, Printer, Download, X, Calendar, AlertTriangle, Eye, ShieldAlert,
-  User, MapPin, CreditCard, Globe, Receipt, Truck
+  User, MapPin, CreditCard, Globe, Receipt, Truck, FileDown, FileSpreadsheet
 } from 'lucide-react';
 import { formatCurrency } from './utils/formatCurrency';
+import PrintPreviewModal from './PrintPreviewModal';
 export default function Suppliers({ setToast }) {
   const { token, API_URL, hasPermission, user } = useAuth();
   
@@ -27,6 +28,18 @@ export default function Suppliers({ setToast }) {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
+
+  // Print Preview configuration state
+  const [previewConfig, setPreviewConfig] = useState({
+    show: false,
+    title: '',
+    headers: [],
+    rows: [],
+    columnConfig: [],
+    totalsRow: null,
+    layoutPreset: 'portrait'
+  });
+  const [companyInfo, setCompanyInfo] = useState(null);
 
   // Modals state
   const [showSupplierModal, setShowSupplierModal] = useState(false);
@@ -192,6 +205,204 @@ export default function Suppliers({ setToast }) {
       }
     } catch (err) {
       console.error('Failed to load company profile:', err);
+    }
+  };
+
+  const triggerReportAction = (actionType) => {
+    let title = '';
+    let headers = [];
+    let rows = [];
+    let colConfig = [];
+    let totalsRow = [];
+    let layout = 'portrait';
+
+    const sup = suppliers.find(s => String(s.SupplierID) === String(reportSupplierId));
+
+    if (selectedReportType === 'list') {
+      title = 'Supplier Contact Directory';
+      headers = ['Code', 'Supplier', 'Contact Email', 'Phone', 'Credit Limit', 'Outstanding Payables', 'Category'];
+      colConfig = [
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'right', isCurrency: true },
+        { align: 'right', isCurrency: true },
+        { align: 'left' }
+      ];
+      rows = reportResult.map(r => [
+        r.SupplierCode,
+        r.SupplierName,
+        r.EmailAddress || '--',
+        r.MobileNumber || '--',
+        Number(r.CreditLimit || 0),
+        Number(r.CurrentBalance || 0),
+        r.SupplierCategory || '--'
+      ]);
+      const totalLimit = reportResult.reduce((sum, r) => sum + parseFloat(r.CreditLimit || 0), 0);
+      const totalPayables = reportResult.reduce((sum, r) => sum + parseFloat(r.CurrentBalance || 0), 0);
+      totalsRow = ['TOTAL', '', '', '', totalLimit, totalPayables, ''];
+    }
+    else if (selectedReportType === 'payables') {
+      title = 'Outstanding Payables Statement';
+      headers = ['Code', 'Supplier', 'Contact Email', 'Phone', 'Credit Limit', 'Outstanding Payables', 'Category'];
+      colConfig = [
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'right', isCurrency: true },
+        { align: 'right', isCurrency: true },
+        { align: 'left' }
+      ];
+      rows = reportResult.map(r => [
+        r.SupplierCode,
+        r.SupplierName,
+        r.EmailAddress || '--',
+        r.MobileNumber || '--',
+        Number(r.CreditLimit || 0),
+        Number(r.CurrentBalance || 0),
+        r.SupplierCategory || '--'
+      ]);
+      const totalLimit = reportResult.reduce((sum, r) => sum + parseFloat(r.CreditLimit || 0), 0);
+      const totalPayables = reportResult.reduce((sum, r) => sum + parseFloat(r.CurrentBalance || 0), 0);
+      totalsRow = ['TOTAL', '', '', '', totalLimit, totalPayables, ''];
+    }
+    else if (selectedReportType === 'ledger') {
+      title = `Supplier Transaction Ledger — ${sup ? sup.SupplierName : 'All Suppliers'}`;
+      headers = ['Date', 'Reference No', 'Invoice No', 'Transaction Type', 'Debit', 'Credit', 'Balance'];
+      colConfig = [
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'right', isCurrency: true },
+        { align: 'right', isCurrency: true },
+        { align: 'right', isCurrency: true }
+      ];
+
+      rows.push([
+        '',
+        '--',
+        '--',
+        'Period Opening Balance',
+        0,
+        0,
+        Number(reportOpeningBalance || 0)
+      ]);
+
+      reportResult.forEach(r => {
+        const { refNo, invoiceNo } = getLedgerRowDetails(r);
+        rows.push([
+          new Date(r.TransactionDate).toLocaleDateString('en-LK'),
+          refNo,
+          invoiceNo,
+          r.ReferenceType,
+          r.TransactionType === 'Debit' ? Number(r.Amount || 0) : 0,
+          r.TransactionType === 'Credit' ? Number(r.Amount || 0) : 0,
+          Number(r.RunningBalance || 0)
+        ]);
+      });
+
+      const totalDebit = reportResult.reduce((sum, r) => sum + (r.TransactionType === 'Debit' ? parseFloat(r.Amount || 0) : 0), 0);
+      const totalCredit = reportResult.reduce((sum, r) => sum + (r.TransactionType === 'Credit' ? parseFloat(r.Amount || 0) : 0), 0);
+      totalsRow = ['TOTAL ACTIVITY', '', '', '', totalDebit, totalCredit, Number(reportClosingBalance || 0)];
+    }
+    else if (selectedReportType === 'statement') {
+      title = `Supplier Account Statement — ${sup ? sup.SupplierName : ''}`;
+      headers = ['Date', 'Document No', 'Description', 'Debit', 'Credit', 'Balance'];
+      colConfig = [
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'right', isCurrency: true },
+        { align: 'right', isCurrency: true },
+        { align: 'right', isCurrency: true }
+      ];
+
+      rows.push([
+        '',
+        '--',
+        'Period Opening Balance',
+        0,
+        0,
+        Number(reportOpeningBalance || 0)
+      ]);
+
+      reportResult.forEach(r => {
+        const { refNo } = getLedgerRowDetails(r);
+        rows.push([
+          new Date(r.TransactionDate).toLocaleDateString('en-LK'),
+          refNo,
+          r.Description || r.ReferenceType,
+          r.TransactionType === 'Debit' ? Number(r.Amount || 0) : 0,
+          r.TransactionType === 'Credit' ? Number(r.Amount || 0) : 0,
+          Number(r.RunningBalance || 0)
+        ]);
+      });
+
+      const totalDebit = reportResult.reduce((sum, r) => sum + (r.TransactionType === 'Debit' ? parseFloat(r.Amount || 0) : 0), 0);
+      const totalCredit = reportResult.reduce((sum, r) => sum + (r.TransactionType === 'Credit' ? parseFloat(r.Amount || 0) : 0), 0);
+      totalsRow = ['TOTAL ACTIVITY', '', '', totalDebit, totalCredit, Number(reportClosingBalance || 0)];
+    }
+    else if (selectedReportType === 'history') {
+      title = 'Purchase History Summary';
+      headers = ['PO Number', 'Supplier', 'Date', 'Amount', 'PO Status', 'Invoice No', 'Payment'];
+      colConfig = [
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'right', isCurrency: true },
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'left' }
+      ];
+      rows = reportResult.map(r => [
+        r.PONumber,
+        r.SupplierName,
+        new Date(r.OrderDate).toLocaleDateString('en-LK'),
+        Number(r.TotalAmount || 0),
+        r.Status,
+        r.InvoiceNumber || '--',
+        r.PaymentStatus
+      ]);
+      const totalAmount = reportResult.reduce((sum, r) => sum + parseFloat(r.TotalAmount || 0), 0);
+      totalsRow = ['TOTAL', '', '', totalAmount, '', '', ''];
+    }
+
+    if (actionType === 'excel') {
+      const csvRows = [];
+      csvRows.push(`"${title.replace(/"/g, '""')}"`);
+      csvRows.push(`"Print Date: ${new Date().toLocaleString()}"`);
+      csvRows.push('');
+      csvRows.push(headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','));
+      rows.forEach(r => csvRows.push(r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')));
+      if (totalsRow.length > 0) csvRows.push(totalsRow.map(t => `"${String(t ?? '').replace(/"/g, '""')}"`).join(','));
+      
+      const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `${title.toLowerCase().replace(/[^a-z0-9]/g, '_')}_report.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+    else {
+      setPreviewConfig({
+        show: true,
+        title,
+        headers,
+        rows,
+        columnConfig: colConfig,
+        totalsRow,
+        layoutPreset: layout
+      });
+      if (actionType === 'print' || actionType === 'pdf') {
+        setTimeout(() => {
+          window.print();
+        }, 300);
+      }
     }
   };
 
@@ -2085,6 +2296,16 @@ export default function Suppliers({ setToast }) {
     }
   };
 
+  const handlePrintPo = (poDetails) => {
+    setSelectedPo(poDetails);
+    setPrintLedgerData(null);
+    setPrintStatementData(null);
+    setPrintGenericReportData(null);
+    setTimeout(() => {
+      window.print();
+    }, 200);
+  };
+
   const handlePrintReport = () => {
     // Clear conflicting states depending on the tab context
     if (activeTab === 'reports') {
@@ -2554,8 +2775,8 @@ export default function Suppliers({ setToast }) {
                                 <button className="btn btn-secondary btn-icon" onClick={async () => {
                                   const res = await fetch(`${API_URL}/api/suppliers/purchases/${po.PurchaseOrderID}`, { headers: { 'Authorization': `Bearer ${token}` } });
                                   if (res.ok) {
-                                    setSelectedPo(await res.json());
-                                    handlePrintReport(); // triggers receipt print
+                                    const poDetails = await res.json();
+                                    handlePrintPo(poDetails);
                                   }
                                 }} title="Print PO Voucher">
                                   <Printer size={12} />
@@ -2566,6 +2787,15 @@ export default function Suppliers({ setToast }) {
                         ))
                       )}
                     </tbody>
+                    {purchaseOrders.length > 0 && (
+                      <tfoot>
+                        <tr style={{ fontWeight: 'bold', background: 'rgba(255, 255, 255, 0.05)' }}>
+                          <td colSpan={3}>TOTAL</td>
+                          <td className="mono" style={{ color: 'var(--accent)' }}>Rs. {formatCurrency(purchaseOrders.reduce((sum, po) => sum + parseFloat(po.TotalAmount || 0), 0))}</td>
+                          <td colSpan={4}></td>
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               </div>
@@ -2780,6 +3010,15 @@ export default function Suppliers({ setToast }) {
                         ))
                       )}
                     </tbody>
+                    {purchaseReturns.length > 0 && (
+                      <tfoot>
+                        <tr style={{ fontWeight: 'bold', background: 'rgba(255, 255, 255, 0.05)' }}>
+                          <td colSpan={3}>TOTAL</td>
+                          <td className="mono" style={{ color: 'var(--danger)' }}>Rs. {formatCurrency(purchaseReturns.reduce((sum, ret) => sum + parseFloat(ret.TotalAmount || 0), 0))}</td>
+                          <td colSpan={5}></td>
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               </div>
@@ -2918,6 +3157,22 @@ export default function Suppliers({ setToast }) {
                         })
                       )}
                     </tbody>
+                    {ledgerTransactions.length > 0 && (
+                      <tfoot>
+                        <tr style={{ fontWeight: 'bold', background: 'rgba(255, 255, 255, 0.05)' }}>
+                          <td colSpan={4}>TOTAL</td>
+                          <td className="mono" style={{ textAlign: 'right', color: 'var(--success)' }}>
+                            Rs. {formatCurrency(ledgerTransactions.reduce((sum, tx) => sum + (tx.TransactionType === 'Debit' ? parseFloat(tx.Amount || 0) : 0), 0))}
+                          </td>
+                          <td className="mono" style={{ textAlign: 'right', color: 'var(--warning)' }}>
+                            Rs. {formatCurrency(ledgerTransactions.reduce((sum, tx) => sum + (tx.TransactionType === 'Credit' ? parseFloat(tx.Amount || 0) : 0), 0))}
+                          </td>
+                          <td className="mono" style={{ textAlign: 'right' }}>
+                            Rs. {formatCurrency(ledgerClosingBalance)}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               </div>
@@ -3017,34 +3272,48 @@ export default function Suppliers({ setToast }) {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '20px', borderTop: '1px solid var(--border-color)', paddingTop: '16px', flexWrap: 'wrap' }}>
-              {selectedReportType === 'statement' ? (
-                <>
-                  <button className="btn btn-secondary" onClick={handleExportStatementExcel} disabled={reportResult.length === 0 || actionLoading}>
-                    <Download size={14} style={{ marginRight: '6px' }} /> Export Excel
-                  </button>
-                  <button className="btn btn-secondary" onClick={handlePrintReport} disabled={reportResult.length === 0 || actionLoading}>
-                    <Printer size={14} style={{ marginRight: '6px' }} /> Export PDF / Print
-                  </button>
-                  <button className="btn btn-secondary" onClick={handleEmailStatement} disabled={reportResult.length === 0 || actionLoading} style={{ color: '#38bdf8', background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)' }}>
-                    ✉ Email Statement
-                  </button>
-                  <button className="btn btn-primary" onClick={handleGenerateReport} disabled={actionLoading}>
-                    {actionLoading ? 'Loading...' : 'Generate Statement'}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button className="btn btn-secondary" onClick={handleExportCSV} disabled={reportResult.length === 0}>
-                    <Download size={14} /> Export CSV
-                  </button>
-                  <button className="btn btn-secondary" onClick={handlePrintReport} disabled={reportResult.length === 0}>
-                    <Printer size={14} /> Print Statement
-                  </button>
-                  <button className="btn btn-primary" onClick={handleGenerateReport}>
-                    Generate Statement
-                  </button>
-                </>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => triggerReportAction('preview')} 
+                disabled={reportResult.length === 0 || actionLoading}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Eye size={14} /> Preview
+              </button>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => triggerReportAction('print')} 
+                disabled={reportResult.length === 0 || actionLoading}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <Printer size={14} /> Print
+              </button>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => triggerReportAction('pdf')} 
+                disabled={reportResult.length === 0 || actionLoading}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <FileDown size={14} /> PDF
+              </button>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => triggerReportAction('excel')} 
+                disabled={reportResult.length === 0 || actionLoading}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <FileSpreadsheet size={14} /> Excel
+              </button>
+
+              {selectedReportType === 'statement' && (
+                <button className="btn btn-secondary" onClick={handleEmailStatement} disabled={reportResult.length === 0 || actionLoading} style={{ color: '#38bdf8', background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.2)' }}>
+                  ✉ Email Statement
+                </button>
               )}
+
+              <button className="btn btn-primary" onClick={handleGenerateReport} disabled={actionLoading}>
+                {actionLoading ? 'Loading...' : (selectedReportType === 'statement' ? 'Generate Statement' : 'Generate Report')}
+              </button>
             </div>
 
           </div>
@@ -3196,6 +3465,20 @@ export default function Suppliers({ setToast }) {
                           <td className="mono" style={{ textAlign: 'right', color: '#38bdf8' }}>Rs. {formatCurrency(reportClosingBalance)}</td>
                         </tr>
                       </tbody>
+                      <tfoot>
+                        <tr style={{ fontWeight: 'bold', background: 'rgba(255, 255, 255, 0.05)' }}>
+                          <td colSpan={3}>TOTAL Activity</td>
+                          <td className="mono" style={{ textAlign: 'right', color: 'var(--success)' }}>
+                            Rs. {formatCurrency(reportResult.reduce((sum, tx) => sum + (tx.TransactionType === 'Debit' ? parseFloat(tx.Amount || 0) : 0), 0))}
+                          </td>
+                          <td className="mono" style={{ textAlign: 'right', color: 'var(--warning)' }}>
+                            Rs. {formatCurrency(reportResult.reduce((sum, tx) => sum + (tx.TransactionType === 'Credit' ? parseFloat(tx.Amount || 0) : 0), 0))}
+                          </td>
+                          <td className="mono" style={{ textAlign: 'right' }}>
+                            Rs. {formatCurrency(reportClosingBalance)}
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </div>
@@ -3345,6 +3628,46 @@ export default function Suppliers({ setToast }) {
                         ))
                       )}
                     </tbody>
+                    {reportResult.length > 0 && (
+                      <tfoot>
+                        {(() => {
+                          if (selectedReportType === 'list' || selectedReportType === 'payables') {
+                            const totalLimit = reportResult.reduce((sum, r) => sum + parseFloat(r.CreditLimit || 0), 0);
+                            const totalPayables = reportResult.reduce((sum, r) => sum + parseFloat(r.CurrentBalance || 0), 0);
+                            return (
+                              <tr style={{ fontWeight: 'bold', background: 'rgba(255, 255, 255, 0.05)' }}>
+                                <td colSpan={4}>TOTAL</td>
+                                <td className="mono">Rs. {formatCurrency(totalLimit)}</td>
+                                <td className="mono" style={{ color: 'var(--warning)' }}>Rs. {formatCurrency(totalPayables)}</td>
+                                <td></td>
+                              </tr>
+                            );
+                          }
+                          else if (selectedReportType === 'ledger') {
+                            const totalDebit = reportResult.reduce((sum, r) => sum + (r.TransactionType === 'Debit' ? parseFloat(r.Amount || 0) : 0), 0);
+                            const totalCredit = reportResult.reduce((sum, r) => sum + (r.TransactionType === 'Credit' ? parseFloat(r.Amount || 0) : 0), 0);
+                            return (
+                              <tr style={{ fontWeight: 'bold', background: 'rgba(255, 255, 255, 0.05)' }}>
+                                <td colSpan={4}>TOTAL Activity</td>
+                                <td className="mono" style={{ textAlign: 'right', color: 'var(--success)' }}>Rs. {formatCurrency(totalDebit)}</td>
+                                <td className="mono" style={{ textAlign: 'right', color: 'var(--warning)' }}>Rs. {formatCurrency(totalCredit)}</td>
+                                <td className="mono" style={{ textAlign: 'right' }}>Rs. {formatCurrency(reportClosingBalance)}</td>
+                              </tr>
+                            );
+                          }
+                          else {
+                            const totalAmount = reportResult.reduce((sum, r) => sum + parseFloat(r.TotalAmount || 0), 0);
+                            return (
+                              <tr style={{ fontWeight: 'bold', background: 'rgba(255, 255, 255, 0.05)' }}>
+                                <td colSpan={3}>TOTAL</td>
+                                <td className="mono">Rs. {formatCurrency(totalAmount)}</td>
+                                <td colSpan={3}></td>
+                              </tr>
+                            );
+                          }
+                        })()}
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               </div>
@@ -4651,8 +4974,8 @@ export default function Suppliers({ setToast }) {
                     // Make sure selectedPo has full items loaded
                     const res = await fetch(`${API_URL}/api/suppliers/purchases/${selectedPo.PurchaseOrderID}`, { headers: { 'Authorization': `Bearer ${token}` } });
                     if (res.ok) {
-                      setSelectedPo(await res.json());
-                      handlePrintReport();
+                      const poDetails = await res.json();
+                      handlePrintPo(poDetails);
                     }
                   }}
                   style={{ fontSize: '12.5px', height: '34px' }}
@@ -6914,6 +7237,23 @@ Balance Due: <strong style={{ color: '#ef4444', fontSize: '14px' }} className="m
           </div>
         </div>
       )}
+      <PrintPreviewModal 
+        show={previewConfig.show}
+        onClose={() => setPreviewConfig(prev => ({ ...prev, show: false }))}
+        title={previewConfig.title}
+        companyInfo={companyProfile}
+        filters={{
+          'Report Type': selectedReportType,
+          'Branch': reportBranch || 'All Branches',
+          'Supplier context': suppliers.find(s => String(s.SupplierID) === String(reportSupplierId))?.SupplierName || 'All Suppliers',
+          'Period': computePeriodDates().start ? `${computePeriodDates().start} to ${computePeriodDates().end}` : 'All-time'
+        }}
+        headers={previewConfig.headers}
+        rows={previewConfig.rows}
+        columnConfig={previewConfig.columnConfig}
+        totalsRow={previewConfig.totalsRow}
+        layoutPreset={previewConfig.layoutPreset}
+      />
 
     </div>
   );

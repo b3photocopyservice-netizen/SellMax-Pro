@@ -1,9 +1,11 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "SellMax Pro POS Backend API",
+  "main": "server.js",
   "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -16,7 +18,9 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
-    "msnodesqlv8": "^5.2.0",
     "mssql": "^12.5.5"
+  },
+  "optionalDependencies": {
+    "msnodesqlv8": "^5.2.0"
   }
 }

@@ -120,7 +120,7 @@ export default function Dashboard() {
   // Map data to SVG viewBox coordinates (width = 600, height = 200, padding = 30)
   const chartWidth = 600;
   const chartHeight = 180;
-  const paddingLeft = 40;
+  const paddingLeft = 70;
   const paddingRight = 20;
   const paddingTop = 20;
   const paddingBottom = 20;

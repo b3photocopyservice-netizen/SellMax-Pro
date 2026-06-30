@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './contexts/AuthContext';
-import { Search, Calendar, FileText, Download, Printer, User, TrendingUp, DollarSign, Percent, ShieldCheck } from 'lucide-react';
+import { Search, Calendar, FileText, Download, Printer, User, TrendingUp, DollarSign, Percent, ShieldCheck, Eye, FileDown, FileSpreadsheet } from 'lucide-react';
 import formatCurrency from './utils/formatCurrency';
+import PrintPreviewModal from './PrintPreviewModal';
 
 export default function CustomerCRMReports({ setToast }) {
   const { token, API_URL } = useAuth();
@@ -29,6 +30,18 @@ export default function CustomerCRMReports({ setToast }) {
   const [modeSummary, setModeSummary] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  // Print Preview configuration state
+  const [previewConfig, setPreviewConfig] = useState({
+    show: false,
+    title: '',
+    headers: [],
+    rows: [],
+    columnConfig: [],
+    totalsRow: null,
+    layoutPreset: 'portrait'
+  });
+  const [companyInfo, setCompanyInfo] = useState(null);
+
   // Adjustment Modal states
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -44,7 +57,150 @@ export default function CustomerCRMReports({ setToast }) {
 
   useEffect(() => {
     fetchCustomers();
+    fetchCompanyInfo();
   }, []);
+
+  const fetchCompanyInfo = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/company`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setCompanyInfo(await res.json());
+      }
+    } catch (err) {
+      console.error('Failed to load company config:', err);
+    }
+  };
+
+  const triggerReportAction = (actionType) => {
+    let title = '';
+    let headers = [];
+    let rows = [];
+    let colConfig = [];
+    let totalsRow = [];
+    let layout = 'portrait';
+
+    if (activeReportTab === 'receivables') {
+      title = 'Outstanding Credit Receivables';
+      headers = ['Customer Code', 'Name', 'Phone', 'Credit Limit', 'Owed Balance', 'Available Credit'];
+      colConfig = [
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'right', isCurrency: true },
+        { align: 'right', isCurrency: true },
+        { align: 'right', isCurrency: true }
+      ];
+      rows = filteredReceivables.map(c => [
+        c.CustomerCode || `CUST-${c.CustomerID}`,
+        c.Name,
+        c.Phone || '--',
+        Number(c.CreditLimit || 0),
+        Number(c.CurrentBalance || 0),
+        Number(c.CreditLimit || 0) - Number(c.CurrentBalance || 0)
+      ]);
+      const limitSum = filteredReceivables.reduce((acc, c) => acc + Number(c.CreditLimit || 0), 0);
+      const balanceSum = filteredReceivables.reduce((acc, c) => acc + Number(c.CurrentBalance || 0), 0);
+      const availSum = limitSum - balanceSum;
+      totalsRow = ['TOTAL', '', '', limitSum, balanceSum, availSum];
+    }
+    else if (activeReportTab === 'ledger' && selectedLedgerCustomer) {
+      title = `Customer Ledger statement — ${selectedLedgerCustomer.Name}`;
+      headers = ['Date', 'Document No', 'Type', 'Description', 'Debit', 'Credit', 'Running Balance'];
+      colConfig = [
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'left' },
+        { align: 'right', isCurrency: true },
+        { align: 'right', isCurrency: true },
+        { align: 'right', isCurrency: true }
+      ];
+
+      let running = ledgerOpeningBalance;
+      const ledgerRows = [];
+      
+      if (startDate) {
+        ledgerRows.push([
+          new Date(startDate).toLocaleDateString('en-LK'),
+          '—',
+          'Opening Balance',
+          'Balance brought forward',
+          ledgerOpeningBalance >= 0 ? ledgerOpeningBalance : 0,
+          ledgerOpeningBalance < 0 ? Math.abs(ledgerOpeningBalance) : 0,
+          running
+        ]);
+      }
+
+      ledgerEntries.forEach(e => {
+        running = running + parseFloat(e.Debit) - parseFloat(e.Credit);
+        ledgerRows.push([
+          new Date(e.Date).toLocaleDateString('en-LK'),
+          e.Type === 'Invoice' ? `#SM-${e.RefNo}` : e.RefNo,
+          e.Type,
+          e.Description || '',
+          Number(e.Debit || 0),
+          Number(e.Credit || 0),
+          running
+        ]);
+      });
+      rows = ledgerRows;
+
+      const debitSum = ledgerEntries.reduce((acc, e) => acc + Number(e.Debit || 0), 0) + (ledgerOpeningBalance >= 0 ? ledgerOpeningBalance : 0);
+      const creditSum = ledgerEntries.reduce((acc, e) => acc + Number(e.Credit || 0), 0) + (ledgerOpeningBalance < 0 ? Math.abs(ledgerOpeningBalance) : 0);
+      totalsRow = ['TOTAL', '', '', '', debitSum, creditSum, running];
+    }
+    else if (activeReportTab === 'modes') {
+      title = 'Collections Payment Mode Summary';
+      headers = ['Payment Method', 'Total Amount Collected'];
+      colConfig = [
+        { align: 'left' },
+        { align: 'right', isCurrency: true }
+      ];
+      rows = modeSummary.map(m => [
+        m.Method || 'Cash',
+        Number(m.TotalAmount || 0)
+      ]);
+      const totalAmount = modeSummary.reduce((acc, m) => acc + Number(m.TotalAmount || 0), 0);
+      totalsRow = ['TOTAL', totalAmount];
+    }
+
+    if (actionType === 'excel') {
+      const csvRows = [];
+      csvRows.push(`"${title.replace(/"/g, '""')}"`);
+      csvRows.push(`"Print Date: ${new Date().toLocaleString()}"`);
+      csvRows.push('');
+      csvRows.push(headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','));
+      rows.forEach(r => csvRows.push(r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')));
+      if (totalsRow.length > 0) csvRows.push(totalsRow.map(t => `"${String(t ?? '').replace(/"/g, '""')}"`).join(','));
+      
+      const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", `${title.toLowerCase().replace(/[^a-z0-9]/g, '_')}_report.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+    else {
+      setPreviewConfig({
+        show: true,
+        title,
+        headers,
+        rows,
+        columnConfig: colConfig,
+        totalsRow,
+        layoutPreset: layout
+      });
+      if (actionType === 'print' || actionType === 'pdf') {
+        setTimeout(() => {
+          window.print();
+        }, 300);
+      }
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -497,11 +653,10 @@ export default function CustomerCRMReports({ setToast }) {
     }
     popup.document.write(html);
     popup.document.close();
-    popup.focus();
-    popup.onload = () => {
+    setTimeout(() => {
       popup.print();
       popup.close();
-    };
+    }, 250);
   };
 
   const handleSelectLedgerCustomer = (customer) => {
@@ -703,23 +858,41 @@ export default function CustomerCRMReports({ setToast }) {
               <span>+ Record Adjustment</span>
             </button>
           )}
+           <button
+            className="btn btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '13px' }}
+            onClick={() => triggerReportAction('preview')}
+            disabled={activeReportTab === 'ledger' && !selectedLedgerCustomer}
+          >
+            <Eye size={14} />
+            <span>Preview</span>
+          </button>
           <button
             className="btn btn-secondary"
             style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '13px' }}
-            onClick={handleExportCSV}
-            disabled={activeReportTab === 'ledger' && !selectedLedgerCustomer}
-          >
-            <Download size={14} />
-            <span>CSV Export</span>
-          </button>
-          <button
-            className="btn btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '13px' }}
-            onClick={handlePrintReport}
+            onClick={() => triggerReportAction('print')}
             disabled={activeReportTab === 'ledger' && !selectedLedgerCustomer}
           >
             <Printer size={14} />
-            <span>Print Ledger</span>
+            <span>Print</span>
+          </button>
+          <button
+            className="btn btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '13px' }}
+            onClick={() => triggerReportAction('pdf')}
+            disabled={activeReportTab === 'ledger' && !selectedLedgerCustomer}
+          >
+            <FileDown size={14} />
+            <span>PDF</span>
+          </button>
+          <button
+            className="btn btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', fontSize: '13px' }}
+            onClick={() => triggerReportAction('excel')}
+            disabled={activeReportTab === 'ledger' && !selectedLedgerCustomer}
+          >
+            <FileSpreadsheet size={14} />
+            <span>Excel</span>
           </button>
         </div>
 
@@ -808,6 +981,16 @@ export default function CustomerCRMReports({ setToast }) {
                         })
                       )}
                     </tbody>
+                    {filteredReceivables.length > 0 && (
+                      <tfoot>
+                        <tr style={{ fontWeight: 'bold', background: 'rgba(255, 255, 255, 0.05)' }}>
+                          <td colSpan={4}>TOTAL</td>
+                          <td className="mono">Rs. {formatCurrency(totalLimit)}</td>
+                          <td className="mono" style={{ color: 'var(--danger)' }}>Rs. {formatCurrency(totalOwedBalance)}</td>
+                          <td className="mono" style={{ color: 'var(--success)' }}>Rs. {formatCurrency(totalAvailableCredit)}</td>
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               </div>
@@ -930,6 +1113,20 @@ export default function CustomerCRMReports({ setToast }) {
                             return rows;
                           })()}
                         </tbody>
+                        <tfoot>
+                          <tr style={{ fontWeight: 'bold', background: 'rgba(255, 255, 255, 0.05)' }}>
+                            <td colSpan={4}>TOTAL</td>
+                            <td className="mono" style={{ textAlign: 'right' }}>
+                              Rs. {formatCurrency(ledgerEntries.reduce((acc, e) => acc + Number(e.Debit || 0), 0) + (ledgerOpeningBalance >= 0 ? ledgerOpeningBalance : 0))}
+                            </td>
+                            <td className="mono" style={{ textAlign: 'right' }}>
+                              Rs. {formatCurrency(ledgerEntries.reduce((acc, e) => acc + Number(e.Credit || 0), 0) + (ledgerOpeningBalance < 0 ? Math.abs(ledgerOpeningBalance) : 0))}
+                            </td>
+                            <td className="mono" style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                              Rs. {formatCurrency(ledgerOpeningBalance + ledgerEntries.reduce((acc, e) => acc + Number(e.Debit || 0) - Number(e.Credit || 0), 0))}
+                            </td>
+                          </tr>
+                        </tfoot>
                       </table>
                     </div>
                   )}
@@ -997,25 +1194,27 @@ export default function CustomerCRMReports({ setToast }) {
                           </td>
                         </tr>
                       ) : (
-                        <>
-                          {modeSummary.map((m, i) => {
-                            const percent = ((parseFloat(m.TotalAmount) / totalModeCollection) * 100).toFixed(1);
-                            return (
-                              <tr key={i}>
-                                <td><span style={{ fontWeight: '600' }}>{m.Method}</span></td>
-                                <td className="mono" style={{ textAlign: 'right', fontWeight: 'bold' }}>Rs. {formatCurrency(m.TotalAmount)}</td>
-                                <td className="mono" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{percent}%</td>
-                              </tr>
-                            );
-                          })}
-                          <tr style={{ borderTop: '2px solid var(--border-color)', fontWeight: 'bold' }}>
-                            <td>TOTAL COLLECTION</td>
-                            <td className="mono" style={{ textAlign: 'right', color: 'var(--primary)' }}>Rs. {formatCurrency(totalModeCollection)}</td>
-                            <td className="mono" style={{ textAlign: 'right' }}>100%</td>
-                          </tr>
-                        </>
+                        modeSummary.map((m, i) => {
+                          const percent = ((parseFloat(m.TotalAmount) / totalModeCollection) * 100).toFixed(1);
+                          return (
+                            <tr key={i}>
+                              <td><span style={{ fontWeight: '600' }}>{m.Method}</span></td>
+                              <td className="mono" style={{ textAlign: 'right', fontWeight: 'bold' }}>Rs. {formatCurrency(m.TotalAmount)}</td>
+                              <td className="mono" style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>{percent}%</td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
+                    {modeSummary.length > 0 && (
+                      <tfoot>
+                        <tr style={{ fontWeight: 'bold', background: 'rgba(255, 255, 255, 0.05)' }}>
+                          <td>TOTAL COLLECTION</td>
+                          <td className="mono" style={{ textAlign: 'right', color: 'var(--primary)' }}>Rs. {formatCurrency(totalModeCollection)}</td>
+                          <td className="mono" style={{ textAlign: 'right' }}>100%</td>
+                        </tr>
+                      </tfoot>
+                    )}
                   </table>
                 </div>
               </div>
@@ -1249,6 +1448,22 @@ export default function CustomerCRMReports({ setToast }) {
           </div>
         );
       })()}
+      <PrintPreviewModal 
+        show={previewConfig.show}
+        onClose={() => setPreviewConfig(prev => ({ ...prev, show: false }))}
+        title={previewConfig.title}
+        companyInfo={companyInfo}
+        filters={{
+          'Report Mode': activeReportTab === 'receivables' ? 'Outstanding Receivables' : activeReportTab === 'ledger' ? 'Statement Ledger' : 'Collections Summary',
+          'Date Range': datePreset !== 'custom' ? datePreset : `${startDate} to ${endDate}`,
+          'Selected Customer': selectedLedgerCustomer ? selectedLedgerCustomer.Name : null
+        }}
+        headers={previewConfig.headers}
+        rows={previewConfig.rows}
+        columnConfig={previewConfig.columnConfig}
+        totalsRow={previewConfig.totalsRow}
+        layoutPreset={previewConfig.layoutPreset}
+      />
 
     </div>
   );

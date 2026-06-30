@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import { 
-  Building2, Phone, MapPin, Coins, RefreshCw, Upload, Image, ShieldCheck, X, FileText 
+  Building2, Phone, MapPin, Coins, RefreshCw, Upload, Image, ShieldCheck, X, FileText, Printer 
 } from 'lucide-react';
 
 export default function CompanyProfile({ setToast }) {
@@ -34,7 +34,20 @@ export default function CompanyProfile({ setToast }) {
     taxPercentage: '0.00',
     isTaxActive: true,
     financialYearStart: '',
-    allowNegativeStock: false
+    allowNegativeStock: false,
+    printHeader: true,
+    headerMessage: '',
+    printLogo: true,
+    printDateTime: true,
+    printCashier: true,
+    printBranch: true,
+    printFooter: true,
+    footerMessage: '',
+    paperSize: '80mm',
+    autoCut: true,
+    openDrawer: true,
+    receiptCopies: 1,
+    defaultPrinter: ''
   });
 
   const canManage = hasPermission('MANAGE_SETTINGS');
@@ -75,7 +88,20 @@ export default function CompanyProfile({ setToast }) {
           taxPercentage: data.TaxPercentage !== undefined ? Number(data.TaxPercentage).toFixed(2) : '0.00',
           isTaxActive: data.IsTaxActive !== undefined ? !!data.IsTaxActive : true,
           financialYearStart: data.FinancialYearStart ? data.FinancialYearStart.split('T')[0] : '',
-          allowNegativeStock: data.AllowNegativeStock !== undefined ? !!data.AllowNegativeStock : false
+          allowNegativeStock: data.AllowNegativeStock !== undefined ? !!data.AllowNegativeStock : false,
+          printHeader: data.PrintHeader !== undefined ? !!data.PrintHeader : true,
+          headerMessage: data.HeaderMessage || '',
+          printLogo: data.PrintLogo !== undefined ? !!data.PrintLogo : true,
+          printDateTime: data.PrintDateTime !== undefined ? !!data.PrintDateTime : true,
+          printCashier: data.PrintCashier !== undefined ? !!data.PrintCashier : true,
+          printBranch: data.PrintBranch !== undefined ? !!data.PrintBranch : true,
+          printFooter: data.PrintFooter !== undefined ? !!data.PrintFooter : true,
+          footerMessage: data.FooterMessage || '',
+          paperSize: data.PaperSize || '80mm',
+          autoCut: data.AutoCut !== undefined ? !!data.AutoCut : true,
+          openDrawer: data.OpenDrawer !== undefined ? !!data.OpenDrawer : true,
+          receiptCopies: data.ReceiptCopies !== undefined ? parseInt(data.ReceiptCopies, 10) : 1,
+          defaultPrinter: data.DefaultPrinter || ''
         };
         setProfile(formatted);
         setOriginalProfile(formatted);
@@ -89,6 +115,254 @@ export default function CompanyProfile({ setToast }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTestPrint = () => {
+    const dummyOrder = {
+      OrderID: '9999',
+      OrderDate: new Date().toISOString(),
+      Username: 'Cashier-Admin',
+      CustomerName: 'Test Walk-in Customer',
+      Subtotal: 1350.00,
+      DiscountAmount: 150.00,
+      TaxAmount: 180.00,
+      TotalAmount: 1380.00,
+      BranchName: 'Main Branch'
+    };
+
+    const dummyItems = [
+      { ProductName: 'Organic Basmati Rice', VariantName: '5kg Pack', Quantity: 1, UOM: 'pack', Subtotal: 950.00, Price: 950.00, OriginalPrice: 950.00 },
+      { ProductName: 'Fresh Whole Milk', VariantName: '1 Litre', Quantity: 2, UOM: 'bottles', Subtotal: 400.00, Price: 200.00, OriginalPrice: 250.00 }
+    ];
+
+    const dummyPayments = [
+      { Method: 'Cash', Amount: 1500.00, ReferenceNumber: 'Recv:1500.00,Change:120.00' }
+    ];
+
+    const logoUrl = profile.logoUrl || null;
+
+    const paymentsHtml = dummyPayments.map(p => {
+      const isCash = p.Method === 'Cash';
+      let recv = null, change = null;
+      if (isCash && p.ReferenceNumber && p.ReferenceNumber.startsWith('Recv:')) {
+        p.ReferenceNumber.split(',').forEach(part => {
+          if (part.startsWith('Recv:')) recv = parseFloat(part.replace('Recv:', ''));
+          if (part.startsWith('Change:')) change = parseFloat(part.replace('Change:', ''));
+        });
+      }
+      return `
+        <div class="pay-row">
+          <span>- ${p.Method}${!isCash && p.ReferenceNumber ? ` (${p.ReferenceNumber})` : ''}</span>
+          <span>Rs. ${Number(p.Amount).toFixed(2)}</span>
+        </div>
+        ${recv !== null ? `<div class="pay-sub"><span>Received:</span><span>Rs. ${recv.toFixed(2)}</span></div>` : ''}
+        ${change !== null ? `<div class="pay-sub"><span>Change:</span><span>Rs. ${change.toFixed(2)}</span></div>` : ''}
+      `;
+    }).join('');
+
+    const itemsHtml = dummyItems.map(item => {
+      const hasOverride = item.OriginalPrice && Number(item.OriginalPrice) !== Number(item.Price);
+      const origHtml = hasOverride 
+        ? `<div style="font-size: 9px; color: #d97706;">Orig: <span style="text-decoration: line-through;">Rs. ${Number(item.OriginalPrice).toFixed(2)}</span></div>` 
+        : '';
+      const variantHtml = item.VariantName
+        ? `<div style="font-size: 9px; color: #6366f1; font-weight: 600;">${item.VariantName}</div>`
+        : '';
+      return `
+        <tr>
+          <td>
+            <div>${item.ProductName}</div>
+            ${variantHtml}
+            ${origHtml}
+          </td>
+          <td style="text-align:center">${Number(item.Quantity)} ${item.UOM || 'pcs'}</td>
+          <td style="text-align:right">Rs. ${Number(item.Subtotal).toFixed(2)}</td>
+        </tr>
+      `;
+    }).join('');
+
+    const discountHtml = Number(dummyOrder.DiscountAmount) > 0
+      ? `<div class="sum-row"><span>Discount:</span><span>-Rs. ${Number(dummyOrder.DiscountAmount).toFixed(2)}</span></div>`
+      : '';
+
+    const addressParts = [
+      profile.addressLine1,
+      profile.addressLine2,
+      profile.city && profile.postalCode
+        ? `${profile.city}, ${profile.postalCode}`
+        : (profile.city || profile.postalCode || ''),
+    ].filter(Boolean).join('<br>');
+
+    const contactParts = [
+      (profile.telephoneNumber || profile.mobileNumber)
+        ? `Tel: ${profile.telephoneNumber || profile.mobileNumber}`
+        : null,
+      profile.email ? `Email: ${profile.email}` : null,
+      profile.website || null,
+    ].filter(Boolean).join('<br>');
+
+    const paperWidth = profile.paperSize === '58mm' ? '58mm' : '80mm';
+    const bodyFontSize = profile.paperSize === '58mm' ? '10.5px' : '12px';
+    const copiesCount = parseInt(profile.receiptCopies, 10) || 1;
+
+    let headerHtml = '';
+    if (profile.printHeader) {
+      const logoTag = (profile.printLogo && logoUrl) ? `<div><img class="logo" src="${logoUrl}" alt="Logo"></div>` : '';
+      const nameTag = `<div class="company-name">${profile.name || 'SELLMAX PRO'}</div>`;
+      const addrContactTag = addressParts || contactParts ? `<div class="company-sub">${[addressParts, contactParts].filter(Boolean).join('<br>')}</div>` : '';
+      const headerMsgTag = profile.headerMessage ? `<div style="font-size: 11px; margin-top: 8px; border-top: 1px dotted #ccc; padding-top: 4px; font-style: italic; white-space: pre-line;">${profile.headerMessage}</div>` : '';
+      
+      headerHtml = `
+        <div class="header">
+          ${logoTag}
+          ${nameTag}
+          ${addrContactTag}
+          ${headerMsgTag}
+        </div>
+      `;
+    }
+
+    let metaHtml = `<div>INVOICE: #SM-${dummyOrder.OrderID} (TEST PRINT)</div>`;
+    if (profile.printDateTime) {
+      metaHtml += `<div>DATE: ${new Date(dummyOrder.OrderDate).toLocaleString()}</div>`;
+    }
+    if (profile.printCashier) {
+      metaHtml += `<div>CASHIER: ${dummyOrder.Username}</div>`;
+    }
+    if (profile.printBranch) {
+      metaHtml += `<div>BRANCH: ${dummyOrder.BranchName}</div>`;
+    }
+    metaHtml += `<div>CUSTOMER: ${dummyOrder.CustomerName}</div>`;
+
+    let footerHtml = '';
+    if (profile.printFooter) {
+      const customFooterMsg = profile.footerMessage 
+        ? `<div style="margin-bottom: 8px; font-weight: bold; white-space: pre-line;">${profile.footerMessage}</div>` 
+        : '<p>Thank you for shopping with us!</p>';
+        
+      footerHtml = `
+        <div class="footer">
+          ${customFooterMsg}
+          <p style="margin-top: 8px; font-size: 8px; opacity: 0.8;">Powered by SellMax Pro POS</p>
+        </div>
+      `;
+    }
+
+    const singleReceipt = `
+      <div class="receipt-container">
+        ${headerHtml}
+        
+        <div class="meta">
+          ${metaHtml}
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th class="col-item" style="text-align:left">ITEM</th>
+              <th class="col-qty">QTY</th>
+              <th class="col-price">PRICE</th>
+            </tr>
+          </thead>
+          <tbody>${itemsHtml}</tbody>
+        </table>
+
+        <div class="summary">
+          <div class="sum-row"><span>Subtotal:</span><span>Rs. ${Number(dummyOrder.Subtotal).toFixed(2)}</span></div>
+          ${discountHtml}
+          <div class="sum-row"><span>VAT:</span><span>Rs. ${Number(dummyOrder.TaxAmount).toFixed(2)}</span></div>
+          <div class="sum-total"><span>TOTAL PAID:</span><span>Rs. ${Number(dummyOrder.TotalAmount).toFixed(2)}</span></div>
+        </div>
+
+        <div class="payments">
+          <div class="pay-label">Payments:</div>
+          ${paymentsHtml}
+        </div>
+
+        ${footerHtml}
+      </div>
+    `;
+
+    let printBodyContent = '';
+    for (let i = 0; i < copiesCount; i++) {
+      const isLast = (i === copiesCount - 1);
+      printBodyContent += `
+        ${singleReceipt}
+        ${!isLast ? '<div class="page-break"></div>' : ''}
+      `;
+    }
+
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Test Print Receipt</title>
+<style>
+  @page {
+    size: ${paperWidth} auto;
+    margin: 4mm 4mm;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: ${bodyFontSize};
+    color: #000;
+    width: 100%;
+    background: white;
+  }
+  .receipt-container {
+    width: 100%;
+    margin-bottom: 20px;
+  }
+  .page-break {
+    page-break-after: always;
+    border-bottom: 2px dashed #000;
+    margin: 15px 0;
+    padding-bottom: 15px;
+  }
+  .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 6px; margin-bottom: 6px; }
+  .logo { max-height: 50px; max-width: 90%; object-fit: contain; margin-bottom: 4px; }
+  .company-name { font-size: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+  .company-sub { font-size: 10px; color: #111; line-height: 1.5; margin-top: 3px; }
+  .meta { font-size: 11px; line-height: 1.7; border-bottom: 1px dashed #000; padding-bottom: 5px; margin-bottom: 5px; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  thead th { font-size: 10px; font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 4px 2px; }
+  tbody td { font-size: 10px; padding: 3px 2px; vertical-align: top; word-break: break-word; }
+  .col-item { width: 52%; }
+  .col-qty  { width: 18%; text-align: center; }
+  .col-price{ width: 30%; text-align: right; }
+  .summary { border-top: 1px dashed #000; padding-top: 5px; margin-top: 5px; }
+  .sum-row { display: flex; justify-content: space-between; font-size: 11px; padding: 2px 0; }
+  .sum-total { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; margin-top: 4px; padding: 4px 0; }
+  .payments { border-top: 1px dashed #000; margin-top: 5px; padding-top: 5px; font-size: 11px; }
+  .pay-label { font-weight: bold; margin-bottom: 3px; font-size: 11px; }
+  .pay-row { display: flex; justify-content: space-between; font-size: 11px; padding: 2px 0; }
+  .pay-sub { display: flex; justify-content: space-between; font-size: 10px; padding-left: 10px; color: #333; }
+  .footer { text-align: center; border-top: 1px dashed #000; margin-top: 8px; padding-top: 6px; font-size: 10px; line-height: 1.6; color: #333; }
+</style>
+</head>
+<body>
+  ${printBodyContent}
+  <script>
+    window.onload = function() {
+      window.focus();
+      setTimeout(function() {
+        window.print();
+        setTimeout(function() { window.close(); }, 500);
+      }, 300);
+    };
+  </script>
+</body>
+</html>`;
+
+    const popup = window.open('', '_blank', 'width=320,height=600,toolbar=0,menubar=0,location=0,status=0');
+    if (!popup) {
+      setToast({ type: 'error', message: 'Pop-up blocked! Allow pop-ups to print test receipt.' });
+      return;
+    }
+    popup.document.write(html);
+    popup.document.close();
+    popup.focus();
   };
 
   const handleInputChange = (e) => {
@@ -197,7 +471,20 @@ export default function CompanyProfile({ setToast }) {
           taxPercentage: data.TaxPercentage !== undefined ? Number(data.TaxPercentage).toFixed(2) : '0.00',
           isTaxActive: data.IsTaxActive !== undefined ? !!data.IsTaxActive : true,
           financialYearStart: data.FinancialYearStart ? data.FinancialYearStart.split('T')[0] : '',
-          allowNegativeStock: data.AllowNegativeStock !== undefined ? !!data.AllowNegativeStock : false
+          allowNegativeStock: data.AllowNegativeStock !== undefined ? !!data.AllowNegativeStock : false,
+          printHeader: data.PrintHeader !== undefined ? !!data.PrintHeader : true,
+          headerMessage: data.HeaderMessage || '',
+          printLogo: data.PrintLogo !== undefined ? !!data.PrintLogo : true,
+          printDateTime: data.PrintDateTime !== undefined ? !!data.PrintDateTime : true,
+          printCashier: data.PrintCashier !== undefined ? !!data.PrintCashier : true,
+          printBranch: data.PrintBranch !== undefined ? !!data.PrintBranch : true,
+          printFooter: data.PrintFooter !== undefined ? !!data.PrintFooter : true,
+          footerMessage: data.FooterMessage || '',
+          paperSize: data.PaperSize || '80mm',
+          autoCut: data.AutoCut !== undefined ? !!data.AutoCut : true,
+          openDrawer: data.OpenDrawer !== undefined ? !!data.OpenDrawer : true,
+          receiptCopies: data.ReceiptCopies !== undefined ? parseInt(data.ReceiptCopies, 10) : 1,
+          defaultPrinter: data.DefaultPrinter || ''
         };
         setProfile(updated);
         setOriginalProfile(updated);
@@ -669,6 +956,280 @@ export default function CompanyProfile({ setToast }) {
                 When enabled, cashier can sell items even if stock quantity is zero or negative. Stock automatically goes into negative values.
               </p>
             </div>
+          </div>
+        </div>
+
+        {/* SECTION 5: POS Printer Settings */}
+        <div className="glass-panel" style={{ padding: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px', borderBottom: '1px solid var(--border-color)', paddingBottom: '12px' }}>
+            <Printer size={20} style={{ color: 'var(--primary)' }} />
+            <h3 style={{ fontSize: '15px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.5px' }}>POS Printer Settings</h3>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Receipt Header Toggle */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <span style={{ fontSize: '13.5px', color: 'var(--text-primary)', fontWeight: '600' }}>Enable Receipt Header</span>
+                <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>Show logo, company name, address, and messages.</p>
+              </div>
+              <div style={{ position: 'relative', width: '56px', height: '28px' }}>
+                <input 
+                  type="checkbox"
+                  checked={profile.printHeader}
+                  onChange={() => setProfile(prev => ({ ...prev, printHeader: !prev.printHeader }))}
+                  disabled={!canManage}
+                  style={{ opacity: 0, width: 0, height: 0, margin: 0 }}
+                  id="print-header-toggle"
+                />
+                <label 
+                  htmlFor="print-header-toggle"
+                  style={{
+                    position: 'absolute',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: profile.printHeader ? 'var(--primary)' : 'rgba(255, 255, 255, 0.08)',
+                    borderRadius: '30px',
+                    cursor: canManage ? 'pointer' : 'default',
+                    transition: 'background-color 0.3s ease',
+                    border: '1px solid var(--border-color)',
+                    display: 'block'
+                  }}
+                >
+                  <span 
+                    style={{
+                      position: 'absolute',
+                      height: '20px',
+                      width: '20px',
+                      left: profile.printHeader ? '30px' : '4px',
+                      bottom: '3px',
+                      backgroundColor: '#ffffff',
+                      borderRadius: '50%',
+                      transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {profile.printHeader && (
+              <div style={{ paddingLeft: '12px', borderLeft: '2px solid var(--primary)', display: 'flex', flexDirection: 'column', gap: '12px', transition: 'all 0.3s' }}>
+                <div className="form-group">
+                  <label className="form-label">Custom Header Message (Multiple Lines)</label>
+                  <textarea
+                    name="headerMessage"
+                    value={profile.headerMessage}
+                    onChange={handleInputChange}
+                    className="form-input"
+                    rows="2"
+                    placeholder="e.g., Welcome to our store!&#10;Thank you for shopping."
+                    disabled={!canManage}
+                    style={{ resize: 'vertical', minHeight: '60px', fontFamily: 'inherit' }}
+                  />
+                </div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={profile.printLogo}
+                      onChange={(e) => setProfile(prev => ({ ...prev, printLogo: e.target.checked }))}
+                      disabled={!canManage}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                    />
+                    <span style={{ fontSize: '12.5px', color: 'var(--text-primary)' }}>Print Company Logo</span>
+                  </label>
+                  
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={profile.printDateTime}
+                      onChange={(e) => setProfile(prev => ({ ...prev, printDateTime: e.target.checked }))}
+                      disabled={!canManage}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                    />
+                    <span style={{ fontSize: '12.5px', color: 'var(--text-primary)' }}>Print Date & Time</span>
+                  </label>
+                  
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={profile.printCashier}
+                      onChange={(e) => setProfile(prev => ({ ...prev, printCashier: e.target.checked }))}
+                      disabled={!canManage}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                    />
+                    <span style={{ fontSize: '12.5px', color: 'var(--text-primary)' }}>Print Cashier Name</span>
+                  </label>
+                  
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={profile.printBranch}
+                      onChange={(e) => setProfile(prev => ({ ...prev, printBranch: e.target.checked }))}
+                      disabled={!canManage}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                    />
+                    <span style={{ fontSize: '12.5px', color: 'var(--text-primary)' }}>Print Branch Name</span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '4px 0' }} />
+
+            {/* Receipt Footer Toggle */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <span style={{ fontSize: '13.5px', color: 'var(--text-primary)', fontWeight: '600' }}>Enable Receipt Footer</span>
+                <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: '2px 0 0 0' }}>Show custom message, exchange policies, and brandings.</p>
+              </div>
+              <div style={{ position: 'relative', width: '56px', height: '28px' }}>
+                <input 
+                  type="checkbox"
+                  checked={profile.printFooter}
+                  onChange={() => setProfile(prev => ({ ...prev, printFooter: !prev.printFooter }))}
+                  disabled={!canManage}
+                  style={{ opacity: 0, width: 0, height: 0, margin: 0 }}
+                  id="print-footer-toggle"
+                />
+                <label 
+                  htmlFor="print-footer-toggle"
+                  style={{
+                    position: 'absolute',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: profile.printFooter ? 'var(--primary)' : 'rgba(255, 255, 255, 0.08)',
+                    borderRadius: '30px',
+                    cursor: canManage ? 'pointer' : 'default',
+                    transition: 'background-color 0.3s ease',
+                    border: '1px solid var(--border-color)',
+                    display: 'block'
+                  }}
+                >
+                  <span 
+                    style={{
+                      position: 'absolute',
+                      height: '20px',
+                      width: '20px',
+                      left: profile.printFooter ? '30px' : '4px',
+                      bottom: '3px',
+                      backgroundColor: '#ffffff',
+                      borderRadius: '50%',
+                      transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {profile.printFooter && (
+              <div style={{ paddingLeft: '12px', borderLeft: '2px solid var(--primary)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div className="form-group">
+                  <label className="form-label">Custom Footer Message (Multiple Lines)</label>
+                  <textarea
+                    name="footerMessage"
+                    value={profile.footerMessage}
+                    onChange={handleInputChange}
+                    className="form-input"
+                    rows="3"
+                    placeholder="e.g., Thank You for Shopping!&#10;Goods Sold Are Not Returnable.&#10;Visit Again!"
+                    disabled={!canManage}
+                    style={{ resize: 'vertical', minHeight: '80px', fontFamily: 'inherit' }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '4px 0' }} />
+
+            {/* Paper Size and Copies */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+              <div className="form-group">
+                <label className="form-label">Paper Size</label>
+                <select
+                  name="paperSize"
+                  value={profile.paperSize}
+                  onChange={handleInputChange}
+                  className="form-select"
+                  disabled={!canManage}
+                >
+                  <option value="80mm">80mm (Standard POS)</option>
+                  <option value="58mm">58mm (Narrow Mobile/POS)</option>
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <label className="form-label">Number of Copies</label>
+                <input
+                  type="number"
+                  name="receiptCopies"
+                  min="1"
+                  max="5"
+                  value={profile.receiptCopies}
+                  onChange={handleInputChange}
+                  className="form-input"
+                  disabled={!canManage}
+                />
+              </div>
+            </div>
+
+            {/* Auto Cut and Open Cash Drawer */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={profile.autoCut}
+                  onChange={(e) => setProfile(prev => ({ ...prev, autoCut: e.target.checked }))}
+                  disabled={!canManage}
+                  style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                />
+                <span style={{ fontSize: '12.5px', color: 'var(--text-primary)' }}>Auto Paper Cut</span>
+              </label>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={profile.openDrawer}
+                  onChange={(e) => setProfile(prev => ({ ...prev, openDrawer: e.target.checked }))}
+                  disabled={!canManage}
+                  style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+                />
+                <span style={{ fontSize: '12.5px', color: 'var(--text-primary)' }}>Open Cash Drawer</span>
+              </label>
+            </div>
+
+            <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '4px 0' }} />
+
+            {/* Default POS Printer Name & Test Button */}
+            <div className="form-group">
+              <label className="form-label">Default POS Printer Name</label>
+              <input
+                type="text"
+                name="defaultPrinter"
+                value={profile.defaultPrinter}
+                onChange={handleInputChange}
+                className="form-input"
+                placeholder="e.g. EPSON TM-T88VI or XP-80"
+                disabled={!canManage}
+              />
+              <span style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px', display: 'block' }}>
+                Specify system printer name. If empty, the browser's default or last chosen printer will be used.
+              </span>
+            </div>
+
+            <div style={{ marginTop: '8px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleTestPrint}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '10px' }}
+              >
+                <Printer size={16} />
+                Test Print Receipt
+              </button>
+            </div>
+
           </div>
         </div>
 

@@ -44,6 +44,18 @@ class ReportsService {
   async getExchangeSettlementsReport(companyId, filters) {
     return await reportsRepository.getExchangeSettlementsReport(companyId, filters);
   }
+
+  async getSalesAnalysisReport(companyId, filters) {
+    return await reportsRepository.getSalesAnalysisReport(companyId, filters);
+  }
+
+  async getProfitAnalysisReport(companyId, filters) {
+    return await reportsRepository.getProfitAnalysisReport(companyId, filters);
+  }
+
+  async getDashboardKPIs(companyId, filters) {
+    return await reportsRepository.getDashboardKPIs(companyId, filters);
+  }
 }
 
 module.exports = new ReportsService();

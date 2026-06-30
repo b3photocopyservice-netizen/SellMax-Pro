@@ -1,6 +1,11 @@
 require('dotenv').config();
 
-const useMsnodesqlv8 = process.env.DB_DRIVER === 'msnodesqlv8' || !process.env.DB_PORT;
+// msnodesqlv8 is Windows-only. On Linux cloud servers it won't be available.
+// Gracefully fall back to cross-platform 'mssql' (tedious) driver.
+let msnodesqlv8Available = false;
+try { require('msnodesqlv8'); msnodesqlv8Available = true; } catch (e) { /* Linux/cloud - not available */ }
+
+const useMsnodesqlv8 = msnodesqlv8Available && (process.env.DB_DRIVER === 'msnodesqlv8' || !process.env.DB_PORT);
 const sql = useMsnodesqlv8 ? require('mssql/msnodesqlv8') : require('mssql');
 
 const dbConfig = useMsnodesqlv8 ? {

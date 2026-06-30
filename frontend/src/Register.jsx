@@ -945,6 +945,105 @@ export default function Register({ setToast }) {
       companyInfo?.Website || null,
     ].filter(Boolean).join('<br>');
 
+    const showHeader = companyInfo?.PrintHeader !== undefined ? !!companyInfo.PrintHeader : true;
+    const showLogo = companyInfo?.PrintLogo !== undefined ? !!companyInfo.PrintLogo : true;
+    const customHeaderMsg = companyInfo?.HeaderMessage || '';
+    const showDateTime = companyInfo?.PrintDateTime !== undefined ? !!companyInfo.PrintDateTime : true;
+    const showCashier = companyInfo?.PrintCashier !== undefined ? !!companyInfo.PrintCashier : true;
+    const showBranch = companyInfo?.PrintBranch !== undefined ? !!companyInfo.PrintBranch : true;
+    const showFooter = companyInfo?.PrintFooter !== undefined ? !!companyInfo.PrintFooter : true;
+    const customFooterMsg = companyInfo?.FooterMessage || '';
+    const paperWidth = companyInfo?.PaperSize === '58mm' ? '58mm' : '80mm';
+    const bodyFontSize = companyInfo?.PaperSize === '58mm' ? '10.5px' : '12px';
+    const copiesCount = companyInfo?.ReceiptCopies !== undefined ? parseInt(companyInfo.ReceiptCopies, 10) : 1;
+
+    let headerHtml = '';
+    if (showHeader) {
+      const logoTag = (showLogo && logoUrl) ? `<div><img class="logo" src="${logoUrl}" alt="Logo"></div>` : '';
+      const nameTag = `<div class="company-name">${companyInfo?.Name || 'SELLMAX PRO'}</div>`;
+      const addrContactTag = addressParts || contactParts ? `<div class="company-sub">${[addressParts, contactParts].filter(Boolean).join('<br>')}</div>` : '';
+      const headerMsgTag = customHeaderMsg ? `<div style="font-size: 11px; margin-top: 8px; border-top: 1px dotted #ccc; padding-top: 4px; font-style: italic; white-space: pre-line;">${customHeaderMsg}</div>` : '';
+      
+      headerHtml = `
+        <div class="header">
+          ${logoTag}
+          ${nameTag}
+          ${addrContactTag}
+          ${headerMsgTag}
+        </div>
+      `;
+    }
+
+    let metaHtml = `<div>INVOICE: #SM-${order.OrderID}</div>`;
+    if (showDateTime) {
+      metaHtml += `<div>DATE: ${new Date(order.OrderDate).toLocaleString()}</div>`;
+    }
+    if (showCashier) {
+      metaHtml += `<div>CASHIER: ${order.Username}</div>`;
+    }
+    if (showBranch) {
+      metaHtml += `<div>BRANCH: ${order.BranchName || companyInfo?.City || 'Main Branch'}</div>`;
+    }
+    metaHtml += `<div>CUSTOMER: ${order.CustomerName || 'Walk-in Customer'}</div>`;
+
+    let footerHtml = '';
+    if (showFooter) {
+      const customFooterMsgTag = customFooterMsg 
+        ? `<div style="margin-bottom: 8px; font-weight: bold; white-space: pre-line;">${customFooterMsg}</div>` 
+        : '<p>Thank you for shopping with us!</p>';
+        
+      footerHtml = `
+        <div class="footer">
+          ${customFooterMsgTag}
+          <p style="margin-top: 8px; font-size: 8px; opacity: 0.8;">Powered by SellMax Pro POS</p>
+        </div>
+      `;
+    }
+
+    const singleReceipt = `
+      <div class="receipt-container">
+        ${headerHtml}
+        
+        <div class="meta">
+          ${metaHtml}
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th class="col-item" style="text-align:left">ITEM</th>
+              <th class="col-qty">QTY</th>
+              <th class="col-price">PRICE</th>
+            </tr>
+          </thead>
+          <tbody>${itemsHtml}</tbody>
+        </table>
+
+        <div class="summary">
+          <div class="sum-row"><span>Subtotal:</span><span>Rs. ${Number(order.Subtotal).toFixed(2)}</span></div>
+          ${discountHtml}
+          <div class="sum-row"><span>VAT:</span><span>Rs. ${Number(order.TaxAmount).toFixed(2)}</span></div>
+          <div class="sum-total"><span>TOTAL PAID:</span><span>Rs. ${Number(order.TotalAmount).toFixed(2)}</span></div>
+        </div>
+
+        <div class="payments">
+          <div class="pay-label">Payments:</div>
+          ${paymentsHtml}
+        </div>
+
+        ${footerHtml}
+      </div>
+    `;
+
+    let printBodyContent = '';
+    for (let i = 0; i < copiesCount; i++) {
+      const isLast = (i === copiesCount - 1);
+      printBodyContent += `
+        ${singleReceipt}
+        ${!isLast ? '<div class="page-break"></div>' : ''}
+      `;
+    }
+
     const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -952,84 +1051,50 @@ export default function Register({ setToast }) {
 <title>Receipt #SM-${order.OrderID}</title>
 <style>
   @page {
-    size: 80mm auto;
+    size: ${paperWidth} auto;
     margin: 4mm 4mm;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 12px;
+    font-size: ${bodyFontSize};
     color: #000;
     width: 100%;
     background: white;
   }
+  .receipt-container {
+    width: 100%;
+    margin-bottom: 20px;
+  }
+  .page-break {
+    page-break-after: always;
+    border-bottom: 2px dashed #000;
+    margin: 15px 0;
+    padding-bottom: 15px;
+  }
   .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 6px; margin-bottom: 6px; }
   .logo { max-height: 50px; max-width: 90%; object-fit: contain; margin-bottom: 4px; }
-  .company-name { font-size: 15px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
-  .company-sub { font-size: 11px; color: #111; line-height: 1.5; margin-top: 3px; }
-  .meta { font-size: 12px; line-height: 1.7; border-bottom: 1px dashed #000; padding-bottom: 5px; margin-bottom: 5px; }
+  .company-name { font-size: 14px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+  .company-sub { font-size: 10px; color: #111; line-height: 1.5; margin-top: 3px; }
+  .meta { font-size: 11px; line-height: 1.7; border-bottom: 1px dashed #000; padding-bottom: 5px; margin-bottom: 5px; }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  thead th { font-size: 11px; font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 4px 2px; overflow: hidden; }
-  tbody td { font-size: 11px; padding: 3px 2px; vertical-align: top; word-break: break-word; overflow: hidden; }
+  thead th { font-size: 10px; font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 4px 2px; overflow: hidden; }
+  tbody td { font-size: 10px; padding: 3px 2px; vertical-align: top; word-break: break-word; overflow: hidden; }
   .col-item { width: 52%; }
   .col-qty  { width: 18%; text-align: center; }
   .col-price{ width: 30%; text-align: right; }
   .summary { border-top: 1px dashed #000; padding-top: 5px; margin-top: 5px; }
-  .sum-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
-  .sum-total { display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; margin-top: 4px; padding: 4px 0; }
-  .payments { border-top: 1px dashed #000; margin-top: 5px; padding-top: 5px; font-size: 12px; }
-  .pay-label { font-weight: bold; margin-bottom: 3px; font-size: 12px; }
-  .pay-row { display: flex; justify-content: space-between; font-size: 12px; padding: 2px 0; }
-  .pay-sub { display: flex; justify-content: space-between; font-size: 11px; padding-left: 10px; color: #333; }
-  .footer { text-align: center; border-top: 1px dashed #000; margin-top: 8px; padding-top: 6px; font-size: 11px; line-height: 1.6; color: #333; }
+  .sum-row { display: flex; justify-content: space-between; font-size: 11px; padding: 2px 0; }
+  .sum-total { display: flex; justify-content: space-between; font-size: 13px; font-weight: bold; border-top: 1px solid #000; border-bottom: 1px solid #000; margin-top: 4px; padding: 4px 0; }
+  .payments { border-top: 1px dashed #000; margin-top: 5px; padding-top: 5px; font-size: 11px; }
+  .pay-label { font-weight: bold; margin-bottom: 3px; font-size: 11px; }
+  .pay-row { display: flex; justify-content: space-between; font-size: 11px; padding: 2px 0; }
+  .pay-sub { display: flex; justify-content: space-between; font-size: 10px; padding-left: 10px; color: #333; }
+  .footer { text-align: center; border-top: 1px dashed #000; margin-top: 8px; padding-top: 6px; font-size: 10px; line-height: 1.6; color: #333; }
 </style>
 </head>
 <body>
-  <div class="header">
-    ${logoUrl ? `<div><img class="logo" src="${logoUrl}" alt="Logo"></div>` : ''}
-    <div class="company-name">${companyInfo?.Name || 'SELLMAX PRO'}</div>
-    ${addressParts || contactParts ? `<div class="company-sub">${[addressParts, contactParts].filter(Boolean).join('<br>')}</div>` : ''}
-  </div>
-
-  <div class="meta">
-    <div>INVOICE: #SM-${order.OrderID}</div>
-    <div>DATE: ${new Date(order.OrderDate).toLocaleString()}</div>
-    <div>CASHIER: ${order.Username}</div>
-    <div>CUSTOMER: ${order.CustomerName || 'Walk-in Customer'}</div>
-  </div>
-
-  <table>
-    <thead>
-      <tr>
-        <th class="col-item" style="text-align:left">ITEM</th>
-        <th class="col-qty">QTY</th>
-        <th class="col-price">PRICE</th>
-      </tr>
-    </thead>
-    <tbody>${itemsHtml}</tbody>
-  </table>
-
-  <div class="summary">
-    <div class="sum-row"><span>Subtotal:</span><span>Rs. ${Number(order.Subtotal).toFixed(2)}</span></div>
-    ${discountHtml}
-    <div class="sum-row"><span>VAT:</span><span>Rs. ${Number(order.TaxAmount).toFixed(2)}</span></div>
-    <div class="sum-total"><span>TOTAL PAID:</span><span>Rs. ${Number(order.TotalAmount).toFixed(2)}</span></div>
-  </div>
-
-  <div class="payments">
-    <div class="pay-label">Payments:</div>
-    ${paymentsHtml}
-  </div>
-
-  <div class="footer">
-    <p>Thank you for shopping with us!</p>
-    <div style="margin-top: 8px;">
-      <strong>Exchange Policy</strong>
-      <p style="margin-top: 2px; font-size: 10px; line-height: 1.3;">A one-time exchange is allowed within two days of purchase, provided the original bill is available.</p>
-      <p style="margin-top: 2px; font-size: 10px; line-height: 1.3;">No cash refunds will be issued under any circumstances.</p>
-    </div>
-    <p style="margin-top: 8px; font-size: 9px; opacity: 0.8;">Powered by SellMax Pro POS</p>
-  </div>
+  ${printBodyContent}
   <script>
     function closeWindow() {
       try {
@@ -2091,11 +2156,6 @@ export default function Register({ setToast }) {
 
               <div className="receipt-footer">
                 <p>Thank you for shopping with us!</p>
-                <div style={{ marginTop: '8px' }}>
-                  <strong>Exchange Policy</strong>
-                  <p style={{ marginTop: '2px', fontSize: '9.5px', lineHeight: '1.3' }}>A one-time exchange is allowed within two days of purchase, provided the original bill is available.</p>
-                  <p style={{ marginTop: '2px', fontSize: '9.5px', lineHeight: '1.3' }}>No cash refunds will be issued under any circumstances.</p>
-                </div>
                 <p style={{ marginTop: '8px', fontSize: '9px', opacity: 0.8 }}>System powered by SellMax Pro POS</p>
               </div>
             </div>

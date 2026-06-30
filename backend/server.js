@@ -49,10 +49,25 @@ app.use('/api', exchangeController);
 
 
 
-// Base route
-app.get('/', (req, res) => {
-  res.json({ message: 'Welcome to SellMax Pro Smart POS API Service.' });
-});
+// Serve React frontend (production build)
+const frontendBuildPath = path.join(__dirname, '..', 'frontend', 'dist');
+const fs = require('fs');
+if (fs.existsSync(frontendBuildPath)) {
+  app.use(express.static(frontendBuildPath));
+  // Catch-all: serve React's index.html for any non-API route (Express 5 syntax)
+  app.get('/{*path}', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
+      return next();
+    }
+    res.sendFile(path.join(frontendBuildPath, 'index.html'));
+  });
+  console.log('Serving React frontend from:', frontendBuildPath);
+} else {
+  // Fallback base route for development
+  app.get('/', (req, res) => {
+    res.json({ message: 'Welcome to SellMax Pro Smart POS API Service.' });
+  });
+}
 
 // Error handling middleware (MUST be last)
 app.use(errorHandler);
@@ -335,6 +350,28 @@ poolPromise.then(async (pool) => {
               CONSTRAINT FK_CustAdj_User FOREIGN KEY (UserID) REFERENCES dbo.Users(UserID)
           );
           PRINT 'Created table dbo.CustomerLedgerAdjustments.';
+      END
+    `);
+
+    // Add POS Printer Settings columns to Companies table if not exists
+    await pool.request().query(`
+      IF COL_LENGTH('dbo.Companies', 'PrintHeader') IS NULL
+      BEGIN
+          ALTER TABLE dbo.Companies ADD 
+              PrintHeader BIT NOT NULL DEFAULT 1,
+              HeaderMessage NVARCHAR(MAX) NULL,
+              PrintLogo BIT NOT NULL DEFAULT 1,
+              PrintDateTime BIT NOT NULL DEFAULT 1,
+              PrintCashier BIT NOT NULL DEFAULT 1,
+              PrintBranch BIT NOT NULL DEFAULT 1,
+              PrintFooter BIT NOT NULL DEFAULT 1,
+              FooterMessage NVARCHAR(MAX) NULL,
+              PaperSize NVARCHAR(20) NOT NULL DEFAULT '80mm',
+              AutoCut BIT NOT NULL DEFAULT 1,
+              OpenDrawer BIT NOT NULL DEFAULT 1,
+              ReceiptCopies INT NOT NULL DEFAULT 1,
+              DefaultPrinter NVARCHAR(255) NULL;
+          PRINT 'Added POS Printer Settings columns to Companies.';
       END
     `);
 

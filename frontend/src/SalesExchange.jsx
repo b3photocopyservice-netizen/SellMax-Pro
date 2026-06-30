@@ -521,11 +521,10 @@ export default function SalesExchange({ setToast }) {
     }
     popup.document.write(html);
     popup.document.close();
-    popup.focus();
-    popup.onload = () => {
+    setTimeout(() => {
       popup.print();
       popup.close();
-    };
+    }, 250);
   };
 
   // Reports Functions
@@ -832,11 +831,10 @@ export default function SalesExchange({ setToast }) {
     }
     popup.document.write(html);
     popup.document.close();
-    popup.focus();
-    popup.onload = () => {
+    setTimeout(() => {
       popup.print();
       popup.close();
-    };
+    }, 250);
   };
 
   const filteredProducts = catalogSearchQuery

@@ -37,7 +37,20 @@ class CompanyRepository {
           TaxPercentage = @TaxPercentage,
           IsTaxActive = @IsTaxActive,
           FinancialYearStart = @FinancialYearStart,
-          AllowNegativeStock = @AllowNegativeStock
+          AllowNegativeStock = @AllowNegativeStock,
+          PrintHeader = @PrintHeader,
+          HeaderMessage = @HeaderMessage,
+          PrintLogo = @PrintLogo,
+          PrintDateTime = @PrintDateTime,
+          PrintCashier = @PrintCashier,
+          PrintBranch = @PrintBranch,
+          PrintFooter = @PrintFooter,
+          FooterMessage = @FooterMessage,
+          PaperSize = @PaperSize,
+          AutoCut = @AutoCut,
+          OpenDrawer = @OpenDrawer,
+          ReceiptCopies = @ReceiptCopies,
+          DefaultPrinter = @DefaultPrinter
       OUTPUT inserted.*
       WHERE CompanyID = @CompanyID
     `;
@@ -67,7 +80,20 @@ class CompanyRepository {
       TaxPercentage: companyData.taxPercentage !== undefined ? parseFloat(companyData.taxPercentage) : 0.00,
       IsTaxActive: companyData.isTaxActive ? 1 : 0,
       FinancialYearStart: companyData.financialYearStart || null,
-      AllowNegativeStock: companyData.allowNegativeStock ? 1 : 0
+      AllowNegativeStock: companyData.allowNegativeStock ? 1 : 0,
+      PrintHeader: companyData.printHeader !== undefined ? (companyData.printHeader ? 1 : 0) : 1,
+      HeaderMessage: companyData.headerMessage || null,
+      PrintLogo: companyData.printLogo !== undefined ? (companyData.printLogo ? 1 : 0) : 1,
+      PrintDateTime: companyData.printDateTime !== undefined ? (companyData.printDateTime ? 1 : 0) : 1,
+      PrintCashier: companyData.printCashier !== undefined ? (companyData.printCashier ? 1 : 0) : 1,
+      PrintBranch: companyData.printBranch !== undefined ? (companyData.printBranch ? 1 : 0) : 1,
+      PrintFooter: companyData.printFooter !== undefined ? (companyData.printFooter ? 1 : 0) : 1,
+      FooterMessage: companyData.footerMessage || null,
+      PaperSize: companyData.paperSize || '80mm',
+      AutoCut: companyData.autoCut !== undefined ? (companyData.autoCut ? 1 : 0) : 1,
+      OpenDrawer: companyData.openDrawer !== undefined ? (companyData.openDrawer ? 1 : 0) : 1,
+      ReceiptCopies: companyData.receiptCopies !== undefined ? parseInt(companyData.receiptCopies, 10) : 1,
+      DefaultPrinter: companyData.defaultPrinter || null
     });
     
     return result.recordset[0] || null;
