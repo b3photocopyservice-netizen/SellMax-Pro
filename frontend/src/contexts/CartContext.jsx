@@ -35,21 +35,22 @@ export const CartProvider = ({ children }) => {
     fetchTaxConfig();
   }, [API_URL, token]);
 
-  const addToCart = (product) => {
+  const addToCart = (product, qtyToAdd = 1) => {
     setCartItems((prevItems) => {
       const existing = prevItems.find((item) => item.productId === product.ProductID);
       if (existing) {
-        if (!allowNegativeStock && existing.quantity >= product.Stock) {
+        const newQty = existing.quantity + qtyToAdd;
+        if (!allowNegativeStock && newQty > product.Stock) {
           throw new Error(`Cannot add more. Only ${product.Stock} ${product.UOM || 'pcs'} of '${product.Name}' are in stock.`);
         }
         return prevItems.map((item) =>
           item.productId === product.ProductID
-            ? { ...item, quantity: item.quantity + 1, subtotal: Number(((item.quantity + 1) * item.price).toFixed(2)) }
+            ? { ...item, quantity: newQty, subtotal: Number((newQty * item.price).toFixed(2)) }
             : item
         );
       } else {
-        if (!allowNegativeStock && product.Stock <= 0) {
-          throw new Error(`'${product.Name}' is out of stock.`);
+        if (!allowNegativeStock && product.Stock < qtyToAdd) {
+          throw new Error(`Cannot add ${qtyToAdd}. Only ${product.Stock} ${product.UOM || 'pcs'} of '${product.Name}' are in stock.`);
         }
         return [
           ...prevItems,
@@ -61,8 +62,8 @@ export const CartProvider = ({ children }) => {
             price: product.Price,
             originalPrice: product.Price,
             cost: product.Cost,
-            quantity: 1,
-            subtotal: product.Price
+            quantity: qtyToAdd,
+            subtotal: Number((qtyToAdd * product.Price).toFixed(2))
           }
         ];
       }

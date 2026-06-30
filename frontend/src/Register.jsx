@@ -121,6 +121,9 @@ export default function Register({ setToast }) {
   // Checkout Write-off/Round-off State
   const [writeOffAmount, setWriteOffAmount] = useState(0);
 
+  // Quick Quantity Barcode Entry State
+  const [pendingScanQty, setPendingScanQty] = useState(1);
+
   // Cash Drawer Day Start State
   const [drawerSession, setDrawerSession] = useState(null);
   const [showDayStartModal, setShowDayStartModal] = useState(false);
@@ -552,9 +555,31 @@ export default function Register({ setToast }) {
     const query = searchQuery.trim();
     if (!query) return;
 
+    // Parse Quantity*Barcode
+    let quantity = 1;
+    let barcodeOrSku = query;
+    if (query.includes('*')) {
+      const parts = query.split('*');
+      const qtyStr = parts[0].trim();
+      barcodeOrSku = parts.slice(1).join('*').trim();
+
+      if (qtyStr !== '') {
+        const parsedQty = parseFloat(qtyStr);
+        if (isNaN(parsedQty) || parsedQty <= 0) {
+          setToast({ type: 'error', message: 'Invalid quantity entered.' });
+          setSearchQuery('');
+          return;
+        }
+        quantity = parsedQty;
+      }
+    }
+
+    // Update pendingScanQty state so variants can use it
+    setPendingScanQty(quantity);
+
     // 1. Check if barcode matches a specific variant's barcode
     for (const [productId, vars] of Object.entries(variantsByProduct)) {
-      const matchedVariant = vars.find(v => v.Barcode === query && v.IsActive);
+      const matchedVariant = vars.find(v => v.Barcode === barcodeOrSku && v.IsActive);
       if (matchedVariant) {
         const product = products.find(p => p.ProductID === matchedVariant.ProductID);
         if (product && product.IsActive !== false && product.IsActive !== 0) {
@@ -570,7 +595,7 @@ export default function Register({ setToast }) {
     }
 
     // 2. Check if barcode/SKU matches a product
-    const matched = products.find(p => p.Barcode === query || p.SKU.toLowerCase() === query.toLowerCase());
+    const matched = products.find(p => p.Barcode === barcodeOrSku || p.SKU.toLowerCase() === barcodeOrSku.toLowerCase());
     if (matched) {
       if (matched.IsActive === false || matched.IsActive === 0) {
         setToast({ type: 'error', message: `Product '${matched.Name}' is inactive and cannot be sold.` });
@@ -592,13 +617,14 @@ export default function Register({ setToast }) {
         return;
       }
       try {
-        addToCart(matched);
+        addToCart(matched, quantity);
+        setPendingScanQty(1); // Reset immediately after direct add
         if (matched.Stock <= 0) {
           setToast({ type: 'warning', message: `Warning: '${matched.Name}' is out of stock. Negative inventory is enabled.` });
         } else if (warning) {
-          setToast({ type: 'warning', message: `Added '${matched.Name}' — ⚠ ${warning}` });
+          setToast({ type: 'warning', message: `Added ${quantity} of '${matched.Name}' — ⚠ ${warning}` });
         } else {
-          setToast({ type: 'success', message: `Added '${matched.Name}' to cart.` });
+          setToast({ type: 'success', message: `Added ${quantity} of '${matched.Name}' to cart.` });
         }
       } catch (err) {
         setToast({ type: 'error', message: err.message });
@@ -606,9 +632,9 @@ export default function Register({ setToast }) {
       setSearchQuery('');
     } else {
       // If it looks like a barcode/SKU (e.g. alphanumeric without spaces, length >= 3), show error and clear input
-      const looksLikeCode = /^[A-Za-z0-9_-]+$/.test(query) && query.length >= 3;
+      const looksLikeCode = /^[A-Za-z0-9_-]+$/.test(barcodeOrSku) && barcodeOrSku.length >= 3;
       if (looksLikeCode) {
-        setToast({ type: 'error', message: `No product found for code: ${query}` });
+        setToast({ type: 'error', message: `No product found for code: ${barcodeOrSku}` });
         setSearchQuery('');
       }
     }
@@ -641,13 +667,14 @@ export default function Register({ setToast }) {
     // Always show variant picker when the product has variants
     const productVariants = variantsByProduct[product.ProductID]?.filter(v => v.IsActive) || [];
     if (productVariants.length > 0) {
+      setPendingScanQty(1); // Standard click defaults to Qty 1
       setVariantPickerProduct(product);
       setShowVariantPicker(true);
       return;
     }
     // No variants — add directly using the product base price
     try {
-      addToCart(product);
+      addToCart(product, 1);
       if (warning) setToast({ type: 'warning', message: `⚠ ${warning}` });
     } catch (err) {
       setToast({ type: 'error', message: err.message });
@@ -663,16 +690,19 @@ export default function Register({ setToast }) {
         Price: variant.Price,
         variantId: variant.VariantID,
         variantName: variant.VariantName,
-      });
+      }, pendingScanQty);
       setShowVariantPicker(false);
       setVariantPickerProduct(null);
+      
+      const qtyText = pendingScanQty > 1 ? `${pendingScanQty} of ` : '';
       if (product.Stock <= 0) {
         setToast({ type: 'warning', message: `Warning: '${product.Name}' (${variant.VariantName}) is out of stock. Negative inventory is enabled.` });
       } else if (warning) {
         setToast({ type: 'warning', message: `⚠ ${warning}` });
       } else {
-        setToast({ type: 'success', message: `Added '${product.Name}' (${variant.VariantName}) — Rs. ${Number(variant.Price).toFixed(2)}` });
+        setToast({ type: 'success', message: `Added ${qtyText}'${product.Name}' (${variant.VariantName}) — Rs. ${Number(variant.Price).toFixed(2)}` });
       }
+      setPendingScanQty(1); // Reset
     } catch (err) {
       setToast({ type: 'error', message: err.message });
     }
