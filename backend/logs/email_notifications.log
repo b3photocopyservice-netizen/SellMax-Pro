@@ -157,3 +157,5 @@ Company: EziBy Smart Shopping.lk | Phone: 0779818879 | Address: Hajiyar Road, Ni
 [2026-06-30T01:01:24.533Z] Email Sent to Store Admin: Low Stock Alert: Product 'Chocolate Chip Muffin' is at 0 pcs (Threshold: 8).
 [2026-06-30T01:01:24.533Z] Email Sent to Store Admin: Low Stock Alert: Product 'Test Brown Sugar' is at 0 kg (Threshold: 10.25).
 [2026-06-30T01:01:24.533Z] Email Sent to Store Admin: Low Stock Alert: Product 'Anchor' is at 0 pcs (Threshold: 10).
+[2026-06-30T01:45:30.479Z] Email Sent to Store Admin: Low Stock Alert: Product 'Anchor' is at -1 pcs (Threshold: 10).
+[2026-06-30T04:59:56.593Z] Email Sent to Store Admin: Low Stock Alert: Product 'Matcha Green Tea Latte Powder (250g)' is at 4 pcs (Threshold: 5).

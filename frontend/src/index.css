@@ -520,6 +520,50 @@ body {
   flex-grow: 1;
 }
 
+/* Hide scrollbar for Chrome, Safari and Opera in nav-menu */
+.nav-menu::-webkit-scrollbar {
+  display: none;
+}
+
+/* Sidebar Menu Scroll Buttons Styling */
+.nav-scroll-btn {
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  color: var(--primary);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  margin: 4px 0;
+  transition: all 0.2s ease;
+  animation: pulse-border 2s infinite;
+  box-sizing: border-box;
+}
+
+.nav-scroll-btn:hover {
+  background: rgba(139, 92, 246, 0.2);
+  color: var(--text-primary);
+  transform: scale(1.01);
+}
+
+.nav-scroll-btn svg {
+  animation: bounce-y 1s infinite alternate;
+}
+
+@keyframes bounce-y {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(2px); }
+}
+
+@keyframes pulse-border {
+  0% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.3); }
+  70% { box-shadow: 0 0 0 4px rgba(139, 92, 246, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
+}
+
 .nav-item {
   display: flex;
   align-items: center;

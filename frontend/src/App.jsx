@@ -15,7 +15,7 @@ import SalesExchange from './SalesExchange';
 import { 
   LayoutDashboard, ShoppingCart, Package, Users, FileBarChart2, 
   Settings, ShieldAlert, LogOut, ShoppingBag, Clock, Wifi, DollarSign,
-  User, RefreshCw
+  User, RefreshCw, ChevronUp, ChevronDown
 } from 'lucide-react';
 
 export default function App() {
@@ -23,6 +23,51 @@ export default function App() {
   const { isDark, toggleTheme } = useTheme();
   const [activeView, setActiveView] = useState('dashboard');
   const [clockTime, setClockTime] = useState(new Date());
+
+  // Sidebar Menu scroll detection and handlers
+  const navRef = React.useRef(null);
+  const [showScrollUp, setShowScrollUp] = useState(false);
+  const [showScrollDown, setShowScrollDown] = useState(false);
+
+  const checkScroll = () => {
+    if (navRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = navRef.current;
+      setShowScrollUp(scrollTop > 5);
+      setShowScrollDown(scrollHeight - scrollTop - clientHeight > 5);
+    }
+  };
+
+  useEffect(() => {
+    const navEl = navRef.current;
+    if (navEl) {
+      checkScroll();
+      navEl.addEventListener('scroll', checkScroll);
+      window.addEventListener('resize', checkScroll);
+      const observer = new MutationObserver(checkScroll);
+      observer.observe(navEl, { childList: true, subtree: true });
+      
+      return () => {
+        navEl.removeEventListener('scroll', checkScroll);
+        window.removeEventListener('resize', checkScroll);
+        observer.disconnect();
+      };
+    }
+  }, [token, user]);
+
+  useEffect(() => {
+    const t = setTimeout(checkScroll, 50);
+    return () => clearTimeout(t);
+  }, [activeView]);
+
+  const scrollNav = (direction) => {
+    if (navRef.current) {
+      const scrollAmount = 120;
+      navRef.current.scrollBy({
+        top: direction === 'up' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
   
   // Toast notifications state
   const [toast, setToast] = useState(null);
@@ -410,7 +455,26 @@ export default function App() {
             </div>
           </div>
 
-          <nav className="nav-menu">
+          {/* Scroll Up Button */}
+          {showScrollUp && (
+            <button 
+              className="nav-scroll-btn up" 
+              onClick={() => scrollNav('up')}
+              title="Scroll Menu Up"
+            >
+              <ChevronUp size={16} />
+            </button>
+          )}
+
+          <nav 
+            className="nav-menu" 
+            ref={navRef}
+            style={{ 
+              overflowY: 'auto',
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none'
+            }}
+          >
             <div 
               className={`nav-item ${activeView === 'dashboard' ? 'active' : ''}`}
               onClick={() => handleNavClick('dashboard')}
@@ -499,6 +563,17 @@ export default function App() {
               </div>
             )}
           </nav>
+
+          {/* Scroll Down Button */}
+          {showScrollDown && (
+            <button 
+              className="nav-scroll-btn down" 
+              onClick={() => scrollNav('down')}
+              title="Scroll Menu Down"
+            >
+              <ChevronDown size={16} />
+            </button>
+          )}
 
           <div className="sidebar-footer">
             <div className="user-profile" style={{ cursor: 'pointer' }} onClick={() => setShowUserProfileModal(true)} title="My Profile Settings">
